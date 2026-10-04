@@ -1,6 +1,7 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -42,6 +43,13 @@ import com.music.bitchord.R
  * text, and a clear button once there is something to clear. Reused wherever
  * else the app needs the same "search this" affordance, such as filtering the
  * settings list.
+ *
+ * With Liquid Glass on, the field matches the nav / mini-player pill. Full
+ * backdrop sampling ([liquidGlass]) is only used when [sampleAppBackdrop] is
+ * true — the caller must draw the field *outside* the page's recorded
+ * backdrop layer (a [androidx.compose.ui.window.Popup] or MainActivity chrome),
+ * or sampling that layer from inside itself crashes the process. In-page
+ * callers keep the lightweight tinted match instead.
  */
 @Composable
 fun SearchField(
@@ -51,6 +59,11 @@ fun SearchField(
     focusRequester: FocusRequester = remember { FocusRequester() },
     /** What the empty field says it is for — the one part that changes per screen. */
     placeholder: String = stringResource(R.string.search_hint),
+    /**
+     * Sample [LocalAppBackdrop] with real [liquidGlass]. Only safe when this
+     * field is composed outside the page [layerBackdrop] recording.
+     */
+    sampleAppBackdrop: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val focusManager = LocalFocusManager.current
@@ -61,12 +74,47 @@ fun SearchField(
         onSubmit()
         focusManager.clearFocus()
     }
+    val useGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
+    // Same family as [MiniPlayer] / [FloatingBottomBar]: half the height, so
+    // the field stays a true pill if its contents ever change the row height.
+    val shape = if (useGlass) {
+        RoundedCornerShape(percent = 50)
+    } else {
+        RoundedCornerShape(11.dp)
+    }
+    val iconTint = if (useGlass) {
+        glassContentColor().copy(alpha = 0.65f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val textColor = if (useGlass) {
+        glassContentColor()
+    } else {
+        MaterialTheme.colorScheme.onBackground
+    }
+    val placeholderColor = if (useGlass) {
+        glassContentColor().copy(alpha = 0.55f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
             // Fixed height prevents the row from growing when text is entered
             .height(46.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+            .then(
+                when {
+                    useGlass && sampleAppBackdrop -> Modifier
+                        .clip(shape)
+                        .liquidGlass(shape)
+                        .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
+                    useGlass -> Modifier.lightweightLiquidGlass(
+                        shape = shape,
+                        fallbackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    else -> Modifier.background(MaterialTheme.colorScheme.surfaceVariant, shape)
+                },
+            )
             // Asymmetric: the magnifier is a button now and wants a real touch
             // target, so it's given the room by pulling the field's own start
             // padding in rather than by pushing the glyph and the text along.
@@ -80,7 +128,7 @@ fun SearchField(
         Icon(
             Icons.Rounded.Search,
             contentDescription = stringResource(R.string.search),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = iconTint,
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
@@ -93,7 +141,7 @@ fun SearchField(
                 Text(
                     text = placeholder,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = placeholderColor,
                 )
             }
             BasicTextField(
@@ -101,7 +149,7 @@ fun SearchField(
                 onValueChange = onQueryChange,
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = textColor,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -130,7 +178,7 @@ fun SearchField(
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = stringResource(R.string.clear_search),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = iconTint,
                     modifier = Modifier.size(18.dp),
                 )
             }

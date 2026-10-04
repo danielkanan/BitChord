@@ -42,14 +42,20 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -75,6 +81,51 @@ import com.music.bitchord.ui.components.songListSkeleton
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import java.util.Locale
+
+/** Search field height + its bottom gutter — used when chrome is drawn outside. */
+val SearchFieldChromeHeight = 50.dp
+
+/** Approximate filter-tab row height (pills + vertical padding). */
+val SearchFilterChromeHeight = 44.dp
+
+/**
+ * Floating search field (+ optional filter tabs) for Liquid Glass. Drawn from
+ * MainActivity chrome — outside the page [layerBackdrop] — so it can use real
+ * [com.music.bitchord.ui.components.liquidGlass] like the nav bar.
+ */
+@Composable
+fun SearchScreenChrome(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    focusRequester: FocusRequester,
+    showFilters: Boolean,
+    filter: SearchFilter,
+    onFilterChange: (SearchFilter) -> Unit,
+    modifier: Modifier = Modifier,
+    onHeightChanged: (Dp) -> Unit = {},
+) {
+    val density = LocalDensity.current
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { size ->
+                onHeightChanged(with(density) { size.height.toDp() })
+            },
+    ) {
+        SearchField(
+            query = query,
+            onQueryChange = onQueryChange,
+            onSubmit = onSubmit,
+            focusRequester = focusRequester,
+            sampleAppBackdrop = true,
+            modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 4.dp),
+        )
+        if (showFilters) {
+            SearchFilterTabs(filter = filter, onFilterChange = onFilterChange)
+        }
+    }
+}
 
 @Composable
 fun SearchScreen(
@@ -111,6 +162,13 @@ fun SearchScreen(
     onHistoryClear: () -> Unit,
     /** Long-press handler for typeahead rows — opens the song actions sheet. */
     onTypeaheadLongPress: ((Song) -> Unit)? = null,
+    /**
+     * When false, the field/filters are drawn by [SearchScreenChrome] in the
+     * app chrome (Liquid Glass). The list still reserves space for them.
+     */
+    embedChrome: Boolean = true,
+    /** Height of externally hosted chrome when [embedChrome] is false. */
+    externalChromeHeight: Dp = SearchFieldChromeHeight,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues,
 ) {
@@ -119,8 +177,9 @@ fun SearchScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     // Tapping the search tab from the nav bar sets focusRequested;
     // respond by focusing the field and opening the keyboard.
-    LaunchedEffect(focusRequested) {
-        if (focusRequested) {
+    // Skip when chrome is external — MainActivity owns that focus requester.
+    LaunchedEffect(focusRequested, embedChrome) {
+        if (focusRequested && embedChrome) {
             focusRequester.requestFocus()
             keyboardController?.show()
             onFocusHandled()
@@ -151,14 +210,22 @@ fun SearchScreen(
             if (!loadingMore && total > 0 && lastVisible >= total - 4) onLoadMore()
         }
     }
-    Column(modifier = modifier.fillMaxSize()) {
-        // Search field and filter tabs stay fixed at the top, outside the
-        // scrolling list, so they're always reachable rather than scrolling
-        // away with the results or recent searches beneath them.
-        // The FrostedTopBar is visible on this tab (showing "Search"), so we
-        // clear it fully — status bar inset + bar height + breathing gap — so
-        // the search field sits cleanly below the bar instead of overlapping it.
-        Column(modifier = Modifier.padding(top = topBarContentPadding())) {
+    // When [embedChrome] is false, MainActivity hosts [SearchScreenChrome]
+    // outside the page backdrop so Liquid Glass can sample it. Otherwise keep
+    // the stacked layout under the bounded TopBarBlur pane.
+    val density = LocalDensity.current
+    // Seeded so the first frame already clears the field before measure lands.
+    var chromeHeight by remember { mutableStateOf(SearchFieldChromeHeight) }
+
+    @Composable
+    fun EmbeddedSearchChrome(modifier: Modifier = Modifier) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .onSizeChanged { size ->
+                    chromeHeight = with(density) { size.height.toDp() }
+                },
+        ) {
             SearchField(
                 query = query,
                 onQueryChange = onQueryChange,
@@ -173,120 +240,148 @@ fun SearchScreen(
                 SearchFilterTabs(filter = filter, onFilterChange = onFilterChange)
             }
         }
+    }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
-        ) {
-            when {
-                suggesting -> {
-                    searchSuggestions(
-                        suggestions = suggestions,
-                        // Picking one is done typing, so the keyboard comes down
-                        // with it and the results get the whole screen.
-                        onClick = { term ->
-                            onSuggestionClick(term)
-                            focusManager.clearFocus()
+    fun LazyListScope.searchBody() {
+        when {
+            suggesting -> {
+                searchSuggestions(
+                    suggestions = suggestions,
+                    // Picking one is done typing, so the keyboard comes down
+                    // with it and the results get the whole screen.
+                    onClick = { term ->
+                        onSuggestionClick(term)
+                        focusManager.clearFocus()
+                    },
+                    onFill = onQueryChange,
+                )
+                if (showTypeahead) {
+                    searchTypeaheadDropdown(
+                        typeaheadResults = typeaheadResults,
+                        onSongClick = { song -> onTopResultPlay(song) },
+                        onSongLongPress = onTypeaheadLongPress,
+                        onBrowseClick = { item ->
+                            onBrowseClick(item)
                         },
-                        onFill = onQueryChange,
                     )
-                    if (showTypeahead) {
-                        searchTypeaheadDropdown(
-                            typeaheadResults = typeaheadResults,
-                            onSongClick = { song -> onTopResultPlay(song) },
-                            onSongLongPress = onTypeaheadLongPress,
-                            onBrowseClick = { item ->
-                                onBrowseClick(item)
-                            },
+                }
+            }
+            results == null -> if (history.isEmpty()) {
+                item { MessageState(stringResource(R.string.search_empty)) }
+            } else {
+                recentSearches(history, onHistoryClick, onHistoryRemove, onHistoryClear)
+            }
+            results is UiState.Loading -> songListSkeleton(circular = filter == SearchFilter.ARTISTS)
+            results is UiState.Error -> item { MessageState(results.message) }
+            results is UiState.Success -> {
+                val tracks = results.data
+                    .mapNotNull { row -> when (row) {
+                        is SearchResult.TopTrack -> row.song
+                        is SearchResult.Track -> row.song
+                        is SearchResult.Browse -> null
+                        else -> null
+                    } }
+                val topResult = results.data.filterIsInstance<SearchResult.TopTrack>().firstOrNull()
+                if (filter == SearchFilter.ALL && topResult != null) {
+                    item(key = "search:top-result:${topResult.song.videoId}") {
+                        TopResultCard(
+                            song = topResult.song,
+                            onPlay = { onTopResultPlay(topResult.song) },
+                            onPlaylist = { onTopResultPlaylist(topResult.song) },
+                            onLongPress = { onSongLongPress(topResult.song) },
                         )
                     }
                 }
-                results == null -> if (history.isEmpty()) {
-                    item { MessageState(stringResource(R.string.search_empty)) }
-                } else {
-                    recentSearches(history, onHistoryClick, onHistoryRemove, onHistoryClear)
-                }
-                results is UiState.Loading -> songListSkeleton(circular = filter == SearchFilter.ARTISTS)
-                results is UiState.Error -> item { MessageState(results.message) }
-                results is UiState.Success -> {
-                    val tracks = results.data
-                        .mapNotNull { row -> when (row) {
-                            is SearchResult.TopTrack -> row.song
-                            is SearchResult.Track -> row.song
-                            is SearchResult.Browse -> null
-                            else -> null
-                        } }
-                    val topResult = results.data.filterIsInstance<SearchResult.TopTrack>().firstOrNull()
-                    if (filter == SearchFilter.ALL && topResult != null) {
-                        item(key = "search:top-result:${topResult.song.videoId}") {
-                            TopResultCard(
-                                song = topResult.song,
-                                onPlay = { onTopResultPlay(topResult.song) },
-                                onPlaylist = { onTopResultPlaylist(topResult.song) },
-                                onLongPress = { onSongLongPress(topResult.song) },
+                searchSections(results.data, filter).forEach { section ->
+                    section.title?.let { title ->
+                        item(key = "search-section:$title") {
+                            Text(
+                                text = title,
+                                modifier = Modifier.padding(
+                                    start = PAGE_GUTTER,
+                                    end = PAGE_GUTTER,
+                                    top = 16.dp,
+                                    bottom = 6.dp,
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
-                    searchSections(results.data, filter).forEach { section ->
-                        section.title?.let { title ->
-                            item(key = "search-section:$title") {
-                                Text(
-                                    text = title,
-                                    modifier = Modifier.padding(
-                                        start = PAGE_GUTTER,
-                                        end = PAGE_GUTTER,
-                                        top = 16.dp,
-                                        bottom = 6.dp,
-                                    ),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
-                        itemsIndexed(
-                            items = section.rows,
-                            key = { index, row ->
-                                when (row) {
-                                    is SearchResult.TopTrack -> "top_${row.song.videoId}_$index"
-                                    is SearchResult.Track -> "track_${row.song.videoId}_$index"
-                                    is SearchResult.Browse -> "browse_${row.item.browseId}_$index"
-                                }
-                            },
-                        ) { index, row ->
+                    itemsIndexed(
+                        items = section.rows,
+                        key = { index, row ->
                             when (row) {
-                                is SearchResult.TopTrack -> Unit
-                                is SearchResult.Track -> SongRow(
-                                    song = row.song,
-                                    onClick = {
-                                        onSongClick(tracks, tracks.indexOf(row.song).coerceAtLeast(0))
-                                    },
-                                    onLongPress = { onSongLongPress(row.song) },
-                                    onSwipeToQueue = { onSongSwipe(row.song) },
-                                )
-                                is SearchResult.Browse -> BrowseRow(
-                                    item = row.item,
-                                    onClick = { onBrowseClick(row.item) },
-                                    onLongPress = onBrowseLongPress?.let { { it(row.item) } },
-                                )
+                                is SearchResult.TopTrack -> "top_${row.song.videoId}_$index"
+                                is SearchResult.Track -> "track_${row.song.videoId}_$index"
+                                is SearchResult.Browse -> "browse_${row.item.browseId}_$index"
                             }
-                            if (index < section.rows.lastIndex) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                                    thickness = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.outline,
-                                )
-                            }
+                        },
+                    ) { index, row ->
+                        when (row) {
+                            is SearchResult.TopTrack -> Unit
+                            is SearchResult.Track -> SongRow(
+                                song = row.song,
+                                onClick = {
+                                    onSongClick(tracks, tracks.indexOf(row.song).coerceAtLeast(0))
+                                },
+                                onLongPress = { onSongLongPress(row.song) },
+                                onSwipeToQueue = { onSongSwipe(row.song) },
+                            )
+                            is SearchResult.Browse -> BrowseRow(
+                                item = row.item,
+                                onClick = { onBrowseClick(row.item) },
+                                onLongPress = onBrowseLongPress?.let { { it(row.item) } },
+                            )
                         }
-                    }
-                    if (loadingMore) {
-                        songListSkeleton(
-                            count = 3,
-                            keyPrefix = "skeleton:search:more",
-                            circular = filter == SearchFilter.ARTISTS,
-                        )
+                        if (index < section.rows.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
                     }
                 }
+                if (loadingMore) {
+                    songListSkeleton(
+                        count = 3,
+                        keyPrefix = "skeleton:search:more",
+                        circular = filter == SearchFilter.ARTISTS,
+                    )
+                }
+            }
+        }
+    }
+
+    if (!embedChrome) {
+        // List fills the screen under the floating logo / account / glass
+        // search field drawn by MainActivity — same idea as Home under Liquid Glass.
+        LazyColumn(
+            state = listState,
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                top = topBarContentPadding() + externalChromeHeight,
+                bottom = contentPadding.calculateBottomPadding(),
+            ),
+        ) {
+            searchBody()
+        }
+    } else {
+        Column(modifier = modifier.fillMaxSize()) {
+            // Search field and filter tabs stay fixed at the top, outside the
+            // scrolling list, so they're always reachable rather than scrolling
+            // away with the results or recent searches beneath them.
+            // The FrostedTopBar is visible on this tab (showing "Search"), so we
+            // clear it fully — status bar inset + bar height + breathing gap — so
+            // the search field sits cleanly below the bar instead of overlapping it.
+            EmbeddedSearchChrome(modifier = Modifier.padding(top = topBarContentPadding()))
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
+            ) {
+                searchBody()
             }
         }
     }

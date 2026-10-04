@@ -103,11 +103,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
@@ -1803,7 +1801,6 @@ private fun QualitySheet(
     selected: AudioQuality,
     onSelect: (AudioQuality) -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Row(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
@@ -1840,10 +1837,7 @@ private fun QualitySheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSelect(quality)
-                    }
+                    .clickable { onSelect(quality) }
                     .padding(horizontal = 22.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1879,7 +1873,6 @@ private fun AutomixPerformanceSheet(
     selected: AutomixPerformanceMode,
     onSelect: (AutomixPerformanceMode) -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Row(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
@@ -1911,10 +1904,7 @@ private fun AutomixPerformanceSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSelect(mode)
-                    }
+                    .clickable { onSelect(mode) }
                     .padding(horizontal = 22.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1964,7 +1954,6 @@ private fun DownloadQualitySheet(
     selected: DownloadQuality,
     onSelect: (DownloadQuality) -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Row(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
@@ -1999,10 +1988,7 @@ private fun DownloadQualitySheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSelect(quality)
-                    }
+                    .clickable { onSelect(quality) }
                     .padding(horizontal = 22.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -2458,7 +2444,6 @@ internal fun SegmentedControl(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val haptics = LocalHapticFeedback.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -2497,10 +2482,7 @@ internal fun SegmentedControl(
                     .clip(RoundedCornerShape(8.dp))
                     .background(pill)
                     .clickable(enabled = enabled) {
-                        if (!chosen) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSelect(index)
-                        }
+                        if (!chosen) onSelect(index)
                     }
                     .padding(vertical = 9.dp),
                 contentAlignment = Alignment.Center,

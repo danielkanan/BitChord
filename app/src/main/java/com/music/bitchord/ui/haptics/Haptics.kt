@@ -66,11 +66,11 @@ enum class Haptic {
  * Cheap to hold and cheap to call: the capability probe and the compiled
  * [VibrationEffect]s live in [HapticDevice], one set for the whole process.
  */
-class Haptics internal constructor(context: Context) {
-    private val app = context.applicationContext
-
+class Haptics internal constructor(@Suppress("UNUSED_PARAMETER") context: Context) {
+    @Suppress("UNUSED_PARAMETER")
     fun play(haptic: Haptic) {
-        HapticDevice.of(app)?.play(haptic)
+        // Temporarily disabled — restore with:
+        // HapticDevice.of(context.applicationContext)?.play(haptic)
     }
 }
 

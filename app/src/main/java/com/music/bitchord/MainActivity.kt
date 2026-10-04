@@ -98,6 +98,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -240,7 +241,9 @@ import com.music.bitchord.ui.screens.HomeScreen
 import com.music.bitchord.ui.screens.LibraryGridPage
 import com.music.bitchord.ui.screens.LibraryScreen
 import com.music.bitchord.ui.screens.MoodGenrePlaylistsScreen
+import com.music.bitchord.ui.screens.SearchFieldChromeHeight
 import com.music.bitchord.ui.screens.SearchScreen
+import com.music.bitchord.ui.screens.SearchScreenChrome
 import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.replay.ReplayScreen
 import com.music.bitchord.ui.replay.cards
@@ -545,6 +548,11 @@ private fun BitChordApp(
     // Set each time the search tab is tapped, which SearchScreen uses as a
     // signal to focus the input field.
     var searchFocusRequested by remember { mutableStateOf(false) }
+    // Owned here so Liquid Glass can host the field in app chrome (outside the
+    // page backdrop) and still receive the tab-tap focus request.
+    val searchFocusRequester = remember { FocusRequester() }
+    var searchChromeHeight by remember { mutableStateOf(SearchFieldChromeHeight) }
+    val searchKeyboard = LocalSoftwareKeyboardController.current
     // Invalidates an in-flight radio lookup when a later play request wins.
     var playRequestGeneration by remember { mutableIntStateOf(0) }
     // Starting radio from the item already playing must not replace that media
@@ -2792,6 +2800,8 @@ private fun BitChordApp(
                             scrollResetTrigger = searchScrollReset,
                             focusRequested = searchFocusRequested,
                             onFocusHandled = { searchFocusRequested = false },
+                            embedChrome = !glassActive,
+                            externalChromeHeight = searchChromeHeight,
                             // Search hits are alternatives to each other, not a running
                             // order — play the one tapped and build a station from it.
                             onSongClick = { songs, index ->
@@ -3196,6 +3206,42 @@ private fun BitChordApp(
                         }
                     },
                 )
+
+                // Liquid Glass search field — sibling of FrostedTopBar / GlassNavBar
+                // so it samples the page backdrop from outside the recorded layer.
+                // Hosting it inside SearchScreen (or a Popup) either crashes or
+                // deadlocks the UI thread redrawing the backdrop against itself.
+                val showGlassSearchChrome = glassActive &&
+                    selectedTab == TAB_SEARCH &&
+                    detail == null &&
+                    selectedMoodGenre == null &&
+                    libraryShowAll == null &&
+                    !showSettings && !showAccountScrobbling && !showSources &&
+                    !showListenTogether && !showEqualizer &&
+                    !showDiscord && !showHistory && !showReplay
+                if (showGlassSearchChrome) {
+                    val showSearchFilters = results != null && searchSuggestions.isEmpty()
+                    LaunchedEffect(searchFocusRequested, showGlassSearchChrome) {
+                        if (searchFocusRequested) {
+                            searchFocusRequester.requestFocus()
+                            searchKeyboard?.show()
+                            searchFocusRequested = false
+                        }
+                    }
+                    SearchScreenChrome(
+                        query = query,
+                        onQueryChange = viewModel::onQueryChange,
+                        onSubmit = viewModel::submitSearch,
+                        focusRequester = searchFocusRequester,
+                        showFilters = showSearchFilters,
+                        filter = filter,
+                        onFilterChange = viewModel::onFilterChange,
+                        onHeightChanged = { searchChromeHeight = it },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = topBarContentPadding()),
+                    )
+                }
 
                 // Drawn before the bars so their own glass reads on top of it.
                 BottomFadeScrim(
