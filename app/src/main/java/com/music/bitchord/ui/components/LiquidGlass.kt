@@ -31,8 +31,12 @@ import com.music.bitchord.ui.components.backdrop.effects.colorControls
 import com.music.bitchord.ui.components.backdrop.effects.lens
 import com.music.bitchord.ui.components.backdrop.highlight.Highlight
 import com.music.bitchord.ui.components.backdrop.highlight.HighlightElement
+import com.music.bitchord.ui.components.backdrop.highlight.HighlightStyle
 import com.music.bitchord.ui.components.backdrop.internal.ShapeProvider
+import com.music.bitchord.ui.components.backdrop.shadow.InnerShadow
+import com.music.bitchord.ui.components.backdrop.shadow.InnerShadowElement
 import com.music.bitchord.ui.components.backdrop.shadow.Shadow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 
 /** Whether the liquid glass nav bar is turned on — see [AppSettings.liquidGlass]. */
@@ -53,7 +57,20 @@ private const val BLUR_RADIUS_DP = 8f
 private const val LENS_HEIGHT = 0.5f
 private const val LENS_AMOUNT = 0.5f
 private const val LENS_MAX_DP = 48f
-private const val SURFACE_OPACITY = 0.4f
+/**
+ * How hard the grey wash sits on the blurred backdrop. Kept modest so artwork
+ * still reads through, but high enough that glass never dissolves into a flat
+ * black or white page behind it.
+ */
+private const val SURFACE_OPACITY = 0.42f
+
+/** Soft grey washes — a touch above near-black / near-white, not a slab. */
+private val DarkGlassTint = Color(0xFF2A2A2C)
+private val LightGlassTint = Color(0xFFF0F0F2)
+
+@Composable
+private fun glassSurfaceTint(): Color =
+    if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) LightGlassTint else DarkGlassTint
 
 /**
  * Resolution fraction the glass surface records and processes its backdrop at.
@@ -72,12 +89,36 @@ private const val GLASS_RESOLUTION_SCALE = 0.33f
  * The hairline along a bar's edge, and what stands in for the glass rim
  * wherever the glass itself is not drawn.
  *
- * A surface filled with the theme's own `surface` colour has no edge of its own
- * against a dark page — it is the same near-black the page is. The glass gets
- * its edge from [Highlight], and this is that edge for everything that does not.
+ * Kept softer than a hard white stroke — depth comes from [GlassHighlight] /
+ * [GlassInnerShadow] rather than a bright rim.
  */
 internal val GLASS_EDGE_WIDTH = 0.5.dp
-internal val GLASS_EDGE_COLOR = Color.White.copy(alpha = 0.10f)
+internal val GLASS_EDGE_COLOR = Color.White.copy(alpha = 0.07f)
+
+/** Soft specular rim — lower alpha + a little blur so it reads as light, not chalk. */
+private val GlassHighlight = Highlight(
+    width = 0.65.dp,
+    blurRadius = 1.25.dp,
+    alpha = 0.75f,
+    style = HighlightStyle.Default(
+        color = Color.White.copy(alpha = 0.32f),
+        falloff = 1.35f,
+    ),
+)
+
+/** Outer drop — a touch deeper so the pill lifts off the page. */
+private val GlassShadow = Shadow(
+    radius = 22.dp,
+    offset = DpOffset(0.dp, 5.dp),
+    color = Color.Black.copy(alpha = 0.18f),
+)
+
+/** Inset shade along the rim — the bevel that makes the edge feel thick. */
+private val GlassInnerShadow = InnerShadow(
+    radius = 8.dp,
+    offset = DpOffset(0.dp, 1.5.dp),
+    color = Color.Black.copy(alpha = 0.28f),
+)
 
 /**
  * Icon and label colour for content sitting on a glass surface.
@@ -115,11 +156,7 @@ fun Modifier.lightweightLiquidGlass(
     fallbackColor: Color,
 ): Modifier {
     val useGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
-    val glassTint = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) {
-        Color(0xFFFAFAFA)
-    } else {
-        Color(0xFF121212)
-    }
+    val glassTint = glassSurfaceTint()
     val shapeProvider = ShapeProvider { shape }
 
     return clip(shape)
@@ -129,10 +166,19 @@ fun Modifier.lightweightLiquidGlass(
         )
         .then(
             if (useGlass) {
-                HighlightElement(
-                    shapeProvider = shapeProvider,
-                    highlight = { Highlight.Default },
-                )
+                Modifier
+                    .then(
+                        InnerShadowElement(
+                            shapeProvider = shapeProvider,
+                            shadow = { GlassInnerShadow },
+                        ),
+                    )
+                    .then(
+                        HighlightElement(
+                            shapeProvider = shapeProvider,
+                            highlight = { GlassHighlight },
+                        ),
+                    )
             } else {
                 Modifier
             },
@@ -169,11 +215,7 @@ fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier {
     val blurPx = with(density) { BLUR_RADIUS_DP.dp.toPx() } * GLASS_RESOLUTION_SCALE
     val lensHeightPx = with(density) { (LENS_HEIGHT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
     val lensAmountPx = with(density) { (LENS_AMOUNT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val surfaceTintColor = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) {
-        Color(0xFFFAFAFA)
-    } else {
-        Color(0xFF121212)
-    }
+    val surfaceTintColor = glassSurfaceTint()
 
     return drawBackdrop(
         backdrop = backdrop,
@@ -190,8 +232,9 @@ fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier {
                 )
             }
         },
-        highlight = { Highlight.Default },
-        shadow = { Shadow.Default },
+        highlight = { GlassHighlight },
+        shadow = { GlassShadow },
+        innerShadow = { GlassInnerShadow },
         onDrawSurface = {
             drawRect(color = surfaceTintColor.copy(alpha = SURFACE_OPACITY), size = size)
         },
