@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Bluetooth
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.CastConnected
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
@@ -54,6 +56,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.R
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.playback.AudioRouting
+import com.music.bitchord.playback.cast.CastController
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import dev.chrisbanes.haze.HazeState
@@ -76,9 +79,9 @@ import kotlin.math.roundToInt
  * effect — see [AudioRouting].
  *
  * A [PlayerDrawer] off the bottom edge, as the rest of the app's sheets are.
- * Outputs come first and volume follows. Every available device stays visible:
- * on a phone there are usually two, so a disclosure would cost a tap merely to
- * reveal a single row.
+ * Outputs come first, then Cast when the framework is up, and volume follows.
+ * Every available device stays visible: on a phone there are usually two, so a
+ * disclosure would cost a tap merely to reveal a single row.
  */
 @Composable
 internal fun AudioOutputSheet(
@@ -86,6 +89,7 @@ internal fun AudioOutputSheet(
     accountName: String?,
     onDismiss: () -> Unit,
     onOpenPipeline: () -> Unit,
+    onOpenCast: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -93,6 +97,7 @@ internal fun AudioOutputSheet(
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
     val outputs = rememberAudioOutputs()
+    val cast by CastController.state.collectAsStateWithLifecycle()
 
     PlayerDrawer(
         hazeState = hazeState,
@@ -115,6 +120,11 @@ internal fun AudioOutputSheet(
                     onSelect = { AudioRouting.select(device.id) },
                 )
             }
+            // Cast is a separate path from the phone's own sinks: picking it
+            // opens the receiver list rather than routing into a sink id, and
+            // receivers behind it are chosen in a popup of their own — there
+            // can be any number of them, and they come and go while it is open.
+            if (cast.supported) CastRow(cast = cast, onClick = onOpenCast)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -122,6 +132,79 @@ internal fun AudioOutputSheet(
 
         Spacer(Modifier.height(6.dp))
         AudioPipelineRow(onClick = onOpenPipeline)
+    }
+}
+
+/**
+ * Opens [com.music.bitchord.ui.components.CastDialog] — Cast receivers are a
+ * separate path from the phone's own sinks, so they live behind this one row
+ * rather than in the device list above.
+ */
+@Composable
+private fun CastRow(cast: CastController.State, onClick: () -> Unit) {
+    val haptics = rememberHaptics()
+    val casting = cast.connectedName != null
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ROW_SHAPE)
+            .background(Color.White.copy(alpha = if (casting) 0.10f else 0.05f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                haptics.play(Haptic.Select)
+                onClick()
+            }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = if (casting) 0.16f else 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (casting) Icons.Rounded.CastConnected else Icons.Rounded.Cast,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = if (casting) 1f else 0.7f),
+                modifier = Modifier.size(21.dp),
+            )
+        }
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = cast.connectedName ?: stringResource(R.string.cast),
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (casting) FontWeight.SemiBold else FontWeight.Normal,
+                ),
+                color = Color.White.copy(alpha = if (casting) 1f else 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stringResource(
+                    when {
+                        cast.connecting -> R.string.cast_connecting
+                        casting -> R.string.cast_casting
+                        else -> R.string.cast_row_subtitle
+                    },
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.35f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

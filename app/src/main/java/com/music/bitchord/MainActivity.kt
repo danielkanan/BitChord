@@ -91,6 +91,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -107,6 +111,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -132,6 +137,7 @@ import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.model.EntityType
 import com.music.bitchord.data.model.SearchHistoryEntity
 import com.music.bitchord.data.model.UserPlaylist
+import com.music.bitchord.data.model.isUnresolvedSpotify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.music.bitchord.data.model.durationMillis
@@ -146,12 +152,22 @@ import com.music.bitchord.ui.screens.DiscordDialogHost
 import com.music.bitchord.ui.screens.DiscordScreen
 import com.music.bitchord.ui.screens.EqualizerScreen
 import com.music.bitchord.ui.screens.HistoryScreen
+import com.music.bitchord.ui.screens.LibraryReplayEntry
+import com.music.bitchord.ui.screens.LibraryScreen
 import com.music.bitchord.ui.screens.ListenTogetherScreen
 import com.music.bitchord.ui.screens.PartyServerEditor
+import com.music.bitchord.ui.screens.ReplayBanner
 import com.music.bitchord.ui.screens.SettingsScreen
 import com.music.bitchord.ui.screens.SourceEditorAlert
 import com.music.bitchord.ui.screens.SourcesScreen
+import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
+import com.music.bitchord.ui.screens.SPOTIFY_BROWSE_ID
 import com.music.bitchord.ui.screens.SpotifyCanvasAuthScreen
+import com.music.bitchord.ui.screens.SpotifyLibraryScreen
+import com.music.bitchord.ui.screens.libraryDeviceItems
+import com.music.bitchord.ui.screens.libraryLinks
+import com.music.bitchord.data.spotify.LocalPlaylistStore
+import com.music.bitchord.data.spotify.SPOTIFY_PAGE_PREFIX
 import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.LinkRequest
 import com.music.bitchord.playback.MusicLink
@@ -189,8 +205,10 @@ import com.music.bitchord.ui.components.AddMusicToPlaylistSheet
 import com.music.bitchord.ui.components.BrowseActionsSheet
 import com.music.bitchord.ui.components.BrowseTarget
 import com.music.bitchord.ui.components.ConfirmationAlert
+import com.music.bitchord.ui.components.SpotifyImportAlert
 import com.music.bitchord.ui.components.DownloadManagerSheet
 import com.music.bitchord.ui.components.PlaylistPickerSheet
+import com.music.bitchord.ui.components.ReorderPlaylistSheet
 import com.music.bitchord.ui.components.SongActionsSheet
 import androidx.media3.session.MediaController
 import com.music.bitchord.playback.QualityUpgrade
@@ -234,7 +252,6 @@ import com.music.bitchord.ui.screens.ExploreScreen
 import com.music.bitchord.ui.screens.LocalMusicScreen
 import com.music.bitchord.ui.screens.HomeScreen
 import com.music.bitchord.ui.screens.LibraryGridPage
-import com.music.bitchord.ui.screens.LibraryScreen
 import com.music.bitchord.ui.screens.MoodGenrePlaylistsScreen
 import com.music.bitchord.ui.screens.SearchFieldChromeHeight
 import com.music.bitchord.ui.screens.SearchScreen
@@ -246,6 +263,8 @@ import com.music.bitchord.ui.replay.ReplayShareSheet
 import com.music.bitchord.ui.replay.ReplayStories
 import com.music.bitchord.ui.replay.ReplayStoryPage
 import com.music.bitchord.ui.replay.rememberReplayState
+import com.music.bitchord.data.canvas.AppleArtistArtRepository
+import com.music.bitchord.data.canvas.keyColors
 import com.music.bitchord.ui.theme.BitChordTheme
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import com.music.bitchord.ui.theme.SystemBarIcons
@@ -420,6 +439,7 @@ private fun BitChordApp(
     var showListenTogether by remember { mutableStateOf(false) }
     var showEqualizer by remember { mutableStateOf(false) }
     var showSpotifyCanvasAuth by remember { mutableStateOf(false) }
+    var showSpotify by remember { mutableStateOf(false) }
 
     // Hosted here rather than inside SourcesScreen so its frosted card has
     // something to blur: that screen is drawn inside the `hazeSource` subtree,
@@ -487,6 +507,7 @@ private fun BitChordApp(
     // The picker opened from the Library tab, where there is no track and
     // creating the playlist is the whole errand.
     var creatingPlaylist by remember { mutableStateOf(false) }
+    var showSpotifyImportDialog by remember { mutableStateOf(false) }
     // Editable playlist the Add Music sheet is staging tracks for.
     var addMusicPlaylist by remember { mutableStateOf<UserPlaylist?>(null) }
     // Which album or playlist the collection menu is open on, or null when it
@@ -494,6 +515,11 @@ private fun BitChordApp(
     // three tabs, the search rows, the artist page's carousels, the release
     // page's own overflow — because only one of them can be held at a time.
     var browseActions by remember { mutableStateOf<BrowseTarget?>(null) }
+    /** The playlist being rearranged, or null when the reorder sheet is shut. */
+    var reorderTarget by remember { mutableStateOf<UserPlaylist?>(null) }
+    /** Its entries as YouTube has them now — fetched fresh when the sheet opens. */
+    var reorderEntries by remember { mutableStateOf<UiState<List<Song>>>(UiState.Loading) }
+    var reorderSaving by remember { mutableStateOf(false) }
     val autoplay by AppSettings.autoplay.collectAsStateWithLifecycle()
     val partyState by ListenTogether.state.collectAsStateWithLifecycle()
     // The same answer the playback service acts on, rather than a second one
@@ -578,6 +604,7 @@ private fun BitChordApp(
         showEqualizer = false
         showHistory = false
         showDiscord = false
+        showSpotify = false
         libraryShowAll = null
         viewModel.clearDetail()
         webSession = null
@@ -639,6 +666,7 @@ private fun BitChordApp(
     LaunchedEffect(showSettings) {
         if (!showSettings) {
             showAccountScrobbling = false
+            showSpotify = false
         }
     }
 
@@ -657,12 +685,24 @@ private fun BitChordApp(
     // page so the Downloads folder recomposes when one is added, the same way it
     // does when a file is.
     val savedCollections by Downloads.collections.collectAsStateWithLifecycle()
-    // The playlists among them, for the Library page's On Device shelf. Read off
-    // both records: the collection record is what says a playlist was downloaded
-    // as a playlist, and what is on disk is what says it still has anything left
+    // The playlists and albums among them, for the Library page's On Device shelf.
+    // Read off both records: the collection record is what says a release was
+    // downloaded whole, and what is on disk is what says it still has anything left
     // to open.
-    val downloadedPlaylists = remember(savedCollections, savedDownloads) {
-        Downloads.savedPlaylists()
+    val downloadedReleases = remember(savedCollections, savedDownloads) {
+        Downloads.savedReleases()
+    }
+    // Playlists imported without (or instead of) a YouTube Music account live
+    // in the app's own store, and sit on the same shelf as the downloaded ones.
+    val localPlaylists by LocalPlaylistStore.playlists.collectAsStateWithLifecycle()
+    val localPlaylistItems = localPlaylists.map { playlist ->
+        ShelfItem(
+            title = playlist.title,
+            subtitle = stringResource(R.string.local_playlist_subtitle, playlist.songs.size),
+            thumbnailUrl = playlist.songs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl,
+            videoId = null,
+            browseId = playlist.browseId,
+        )
     }
     // What a browse id is recorded under in Downloads.collections, when it names
     // a release downloaded whole — see BrowseTarget.downloadId. A downloaded
@@ -672,7 +712,7 @@ private fun BitChordApp(
     val downloadIdFor: (String?) -> String? = { id ->
         id?.let { Downloads.recordIdOf(it) ?: it }?.takeIf { it in savedCollections }
     }
-    LaunchedEffect(savedDownloads, savedCollections, detail?.browseId) {
+    LaunchedEffect(savedDownloads, savedCollections, detail?.browseId, localPlaylists) {
         val openPage = detail ?: return@LaunchedEffect
         val open = openPage.browseId
         // A downloaded playlist's page is a snapshot of the same folder and goes
@@ -684,7 +724,9 @@ private fun BitChordApp(
         // the same disk work twice on every open, which was especially visible
         // for large download libraries and slow content providers.
         if (openPage.songs !is UiState.Loading &&
-            (open == "local:downloads" || Downloads.recordIdOf(open) != null)
+            (open == "local:downloads" || open == CACHE_FOLDER_BROWSE_ID ||
+                Downloads.recordIdOf(open) != null ||
+                LocalPlaylistStore.getPlaylist(open) != null)
         ) {
             viewModel.reloadLocalDetail(open)
         }
@@ -836,7 +878,7 @@ private fun BitChordApp(
     val libraryPull = rememberPullToRefreshState()
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val currentFeed = when {
-        showSettings || showAccountScrobbling || detail != null -> null
+        showSettings || showAccountScrobbling || showSpotify || detail != null -> null
         selectedTab == TAB_HOME -> MainViewModel.Feed.HOME
         selectedTab == TAB_EXPLORE -> MainViewModel.Feed.EXPLORE
         selectedTab == TAB_LIBRARY -> MainViewModel.Feed.LIBRARY
@@ -1077,7 +1119,13 @@ private fun BitChordApp(
         }
     }
 
-    val playFrom: (List<Song>, Int, QueueSource) -> Unit = { songs, index, source ->
+    val playFrom: (List<Song>, Int, QueueSource) -> Unit = playFrom@{ allSongs, allIndex, source ->
+        // A Spotify page lists songs it has not found on YouTube Music yet (or
+        // never will); those can't be queued, so play the rest in their order.
+        if (allSongs.getOrNull(allIndex)?.isUnresolvedSpotify == true) return@playFrom
+        val songs = allSongs.filterNot { it.isUnresolvedSpotify }
+        if (songs.isEmpty()) return@playFrom
+        val index = songs.indexOf(allSongs.getOrNull(allIndex)).coerceAtLeast(0)
         playRequestGeneration++
         activeRadioSeed = null
         scope.launch {
@@ -1301,7 +1349,8 @@ private fun BitChordApp(
             }
         }
     }
-    val addToQueue: (Song) -> Unit = { song ->
+    val addToQueue: (Song) -> Unit = addToQueue@{ song ->
+        if (song.isUnresolvedSpotify) return@addToQueue
         scope.launch {
             if (refusedByHost()) return@launch
             // The end of what the user queued, not the end of the queue: a song
@@ -1333,7 +1382,8 @@ private fun BitChordApp(
             }
         }
     }
-    val playNext: (Song) -> Unit = { song ->
+    val playNext: (Song) -> Unit = playNext@{ song ->
+        if (song.isUnresolvedSpotify) return@playNext
         scope.launch {
             if (refusedByHost()) return@launch
             controller?.let {
@@ -1717,6 +1767,10 @@ private fun BitChordApp(
     // card opens the same way from either.
     val onLibraryItemClick: (ShelfItem) -> Unit = { item ->
         item.browseId?.let { id ->
+            if (id == SPOTIFY_BROWSE_ID) {
+                showSpotify = true
+                return@let
+            }
             if (id == "local:all" && !LocalMediaRepository.hasStoragePermission(context)) {
                 val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     Manifest.permission.READ_MEDIA_AUDIO
@@ -1893,7 +1947,22 @@ private fun BitChordApp(
     // handing them the theme's background puts a black band on a page that is
     // washed in an artwork's colour instead. Off a detail page this resolves
     // to the theme's background anyway, which is exactly right there.
-    val detailPalette = rememberArtworkPalette(detail?.thumbnailUrl)
+    //
+    // Artist pages must read the same Apple hero the page does, or the bars
+    // stay the YouTube photo's colour while the page beneath them has moved on.
+    val appleArtVersion by AppleArtistArtRepository.updates.collectAsStateWithLifecycle()
+    val detailApple = remember(detail?.title, detail?.type, appleArtVersion) {
+        detail?.takeIf { it.type == BrowseType.ARTIST }
+            ?.let { AppleArtistArtRepository.cached(it.title) }
+    }
+    val detailPalette = rememberArtworkPalette(
+        imageUrl = detailApple?.heroUrl
+            ?: detail?.thumbnailUrl?.takeUnless {
+                detail?.type == BrowseType.ARTIST &&
+                    detail?.title?.let { AppleArtistArtRepository.lookedUp(it) } != true
+            },
+        keyColors = detailApple?.keyColors(),
+    )
 
     // One set of numbers for the cards, the page, the stories and the shared
     // picture, so they cannot disagree. Read while any of them is on screen —
@@ -2122,6 +2191,7 @@ private fun BitChordApp(
                 showReplay = false
                 showHistory = false
                 showDiscord = false
+                showSpotify = false
                 libraryShowAll = null
 
                 when (sourceType) {
@@ -2206,7 +2276,10 @@ private fun BitChordApp(
         BackHandler(enabled = showDiscord) {
             showDiscord = false
         }
-        BackHandler(enabled = showAccountScrobbling && !showDiscord) {
+        BackHandler(enabled = showSpotify && detail == null) {
+            showSpotify = false
+        }
+        BackHandler(enabled = showAccountScrobbling && !showDiscord && !showSpotify) {
             showAccountScrobbling = false
         }
         BackHandler(enabled = showSources) {
@@ -2221,7 +2294,7 @@ private fun BitChordApp(
         // One back step out of Settings, or out of any tab but Home, lands on
         // Home rather than exiting — only Home itself hands back to the system,
         // which is what actually closes/minimizes the app.
-        BackHandler(enabled = showSettings && !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer) {
+        BackHandler(enabled = showSettings && !showSpotify && !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer) {
             showSettings = false
             // Only when Settings was the whole of what was on screen. Opened
             // over Replay or over a release page, closing it reveals that again
@@ -2229,7 +2302,7 @@ private fun BitChordApp(
             if (detail == null && !showReplay) selectedTab = TAB_HOME
         }
         BackHandler(
-            enabled = detail == null && !showSettings && !showAccountScrobbling &&
+            enabled = detail == null && !showSettings && !showAccountScrobbling && !showSpotify &&
                 !showSources && !showListenTogether && !showEqualizer && !showReplay && selectedMoodGenre == null &&
                 selectedTab != TAB_HOME,
         ) {
@@ -2257,6 +2330,7 @@ private fun BitChordApp(
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 AnimatedContent(
                     targetState = when {
+                        showSpotify && detail == null -> "spotify"
                         showDiscord -> "discord"
                         showHistory -> "history"
                         // `&& detail == null`: a card opened from the grid
@@ -2320,7 +2394,7 @@ private fun BitChordApp(
                     // the identical copy fading in behind it.
                     val live = detailStack.lastOrNull()?.takeIf {
                         it.browseId == key && key != "settings" && key != "account_scrobbling" &&
-                            key != "discord" && key != "replay" && key != "history" &&
+                            key != "discord" && key != "spotify" && key != "replay" && key != "history" &&
                             key != "library_show_all"
                     }
                     // Held for the same reason, one step further on: a popped
@@ -2398,6 +2472,19 @@ private fun BitChordApp(
                             onOpenDialog = { discordDialog = it },
                             contentPadding = listPadding,
                         )
+                    } else if (key == "spotify") {
+                        SpotifyLibraryScreen(
+                            onOpenPlaylist = { playlist ->
+                                viewModel.openDetail(
+                                    browseId = SPOTIFY_PAGE_PREFIX + playlist.id,
+                                    title = playlist.name,
+                                    subtitle = playlist.owner ?: context.getString(R.string.spotify),
+                                    thumbnailUrl = playlist.imageUrl,
+                                    type = BrowseType.PLAYLIST,
+                                )
+                            },
+                            contentPadding = listPadding,
+                        )
                     } else if (key == "account_scrobbling") {
                         AccountAndScrobblingScreen(
                             signedIn = signedIn,
@@ -2416,6 +2503,7 @@ private fun BitChordApp(
                             onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                             onOpenLastfmLogin = { showLastfmLogin = true },
                             onOpenDiscord = { showDiscord = true },
+                            onOpenSpotify = { showSpotify = true },
                             contentPadding = listPadding,
                         )
                     } else if (key == "sources") {
@@ -2846,13 +2934,26 @@ private fun BitChordApp(
                             // does nothing; see [onBrowseLongPress].
                             onShelfItemLongPress = onBrowseLongPress,
                             onNewPlaylist = { creatingPlaylist = true },
+                            onImportSpotifyPlaylist = { showSpotifyImportDialog = true },
                             onShowAll = { shelf -> libraryShowAll = shelf },
-                            replayCards = replayCards,
-                            replayHolder = account?.name.orEmpty(),
-                            replayMemberSince = replay.memberSince,
-                            onOpenReplay = { page ->
-                                replayLandingPage = page
-                                showReplay = true
+                            replay = {
+                                if (replayCards.isEmpty() && !replay.loading) {
+                                    ReplayBanner(null) {
+                                        replayLandingPage = ReplayStoryPage.INTRO
+                                        showReplay = true
+                                    }
+                                } else {
+                                    LibraryReplayEntry(
+                                        cards = replayCards,
+                                        loading = replay.loading,
+                                        holder = account?.name.orEmpty(),
+                                        memberSince = replay.memberSince,
+                                        onOpenReplay = { page ->
+                                            replayLandingPage = page
+                                            showReplay = true
+                                        },
+                                    )
+                                }
                             },
                             onSignIn = { webSession = WebSessionMode.SIGN_IN },
                             onRetry = viewModel::loadLibrary,
@@ -2860,7 +2961,9 @@ private fun BitChordApp(
                             onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
                             pullState = libraryPull,
                             contentPadding = listPadding,
-                            downloadedPlaylists = downloadedPlaylists,
+                            links = libraryLinks(),
+                            deviceItems = libraryDeviceItems(downloadedReleases) + localPlaylistItems,
+                            showTitle = false,
                         )
                     }
                 }
@@ -2871,9 +2974,9 @@ private fun BitChordApp(
                     (detail.type == BrowseType.ALBUM ||
                         detail.type == BrowseType.PLAYLIST ||
                         detail.type == BrowseType.ARTIST) &&
-                    !isLocalDetail && !showDiscord && !showHistory && !showSettings &&
+                    !isLocalDetail && !showDiscord && !showSpotify && !showHistory && !showSettings &&
                     !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer && !showReplay
-                val isReplayVisible = showReplay && !showDiscord && !showHistory &&
+                val isReplayVisible = showReplay && !showDiscord && !showSpotify && !showHistory &&
                     !(libraryShowAll != null && detail == null) &&
                     !showAccountScrobbling && !showSources && !showListenTogether &&
                     !showEqualizer && !showSettings
@@ -2901,6 +3004,7 @@ private fun BitChordApp(
 
                 FrostedTopBar(
                     title = when {
+                        showSpotify && detail == null -> stringResource(R.string.spotify)
                         showDiscord -> "Discord"
                         showHistory -> stringResource(R.string.history)
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
@@ -2927,7 +3031,7 @@ private fun BitChordApp(
                     scrolled = when {
                         showSettings || showAccountScrobbling || showSources || showListenTogether ||
                             showEqualizer ||
-                            showDiscord || showHistory ||
+                            showDiscord || showSpotify || showHistory ||
                             (libraryShowAll != null && detail == null) ||
                             (detail != null && detailActiveShelf != null) ||
                             selectedMoodGenre != null -> true
@@ -2938,6 +3042,7 @@ private fun BitChordApp(
                     refreshing = currentFeed != null && currentFeed in refreshing,
                     pullFraction = { currentPull?.distanceFraction ?: 0f },
                     onBack = when {
+                        showSpotify && detail == null -> ({ showSpotify = false })
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
@@ -3015,7 +3120,7 @@ private fun BitChordApp(
                         }
                         // Only worth surfacing where there's room for it and it won't
                         // be mistaken for a per-page action — Home, at rest.
-                        if (!showSettings && !showAccountScrobbling && !showSources && !showListenTogether && !showEqualizer &&
+                        if (!showSettings && !showAccountScrobbling && !showSpotify && !showSources && !showListenTogether && !showEqualizer &&
                             detail == null && selectedTab == TAB_HOME
                         ) {
                             updateNotice?.let { update ->
@@ -3033,7 +3138,7 @@ private fun BitChordApp(
                                 }
                             }
                         }
-                        if (!showSettings && !showAccountScrobbling) {
+                        if (!showSettings && !showAccountScrobbling && !showSpotify) {
                             // Left of the account photo, and only on Library itself:
                             // a history is a record of what was played, which reads
                             // as that tab's business rather than every tab's.
@@ -3190,7 +3295,7 @@ private fun BitChordApp(
                     detail == null &&
                     selectedMoodGenre == null &&
                     libraryShowAll == null &&
-                    !showSettings && !showAccountScrobbling && !showSources &&
+                    !showSettings && !showAccountScrobbling && !showSpotify && !showSources &&
                     !showListenTogether && !showEqualizer &&
                     !showDiscord && !showHistory && !showReplay
                 if (showSearchChrome) {
@@ -3233,6 +3338,7 @@ private fun BitChordApp(
                     viewModel.closeMoodGenre()
                     showSettings = false
                     showAccountScrobbling = false
+                    showSpotify = false
                     showSources = false
                     showListenTogether = false
                     showEqualizer = false
@@ -3715,14 +3821,23 @@ private fun BitChordApp(
                     startCreating = target == null,
                     hazeState = hazeState,
                     pagePalette = detail?.let { detailPalette },
-                    onPick = { playlist ->
+                    onAdd = { picked ->
                         target?.let { song ->
-                            viewModel.addToPlaylist(playlist, song) { alreadyInPlaylist ->
+                            viewModel.addToPlaylists(picked, song) { added, alreadyThere, failed ->
+                                // One line for the whole batch, saying the
+                                // outcome that matters most: what went in, else
+                                // that it was all there already, else that it
+                                // didn't work.
                                 showQueueNotice(
-                                    context.getString(
-                                        if (alreadyInPlaylist) R.string.song_already_in_playlist
-                                        else R.string.song_added_to_playlist,
-                                    ),
+                                    when {
+                                        added > 1 -> context.resources.getQuantityString(
+                                            R.plurals.added_to_playlists_notice, added, added,
+                                        )
+                                        added == 1 -> context.getString(R.string.song_added_to_playlist)
+                                        alreadyThere > 0 && failed == 0 ->
+                                            context.getString(R.string.song_already_in_playlist)
+                                        else -> context.getString(R.string.failed)
+                                    },
                                 )
                             }
                         }
@@ -3920,6 +4035,21 @@ private fun BitChordApp(
                             viewModel.renamePlaylist(p, name)
                         }
                     },
+                    onReorder = playlist?.let { p ->
+                        {
+                            browseActions = null
+                            reorderTarget = p
+                            reorderEntries = UiState.Loading
+                            reorderSaving = false
+                            viewModel.loadPlaylistEntries(p) { result ->
+                                if (reorderTarget != p) return@loadPlaylistEntries
+                                reorderEntries = result.fold(
+                                    onSuccess = { UiState.Success(it) },
+                                    onFailure = { UiState.Error(context.getString(R.string.failed)) },
+                                )
+                            }
+                        }
+                    },
                     onDelete = playlist?.let { p ->
                         {
                             browseActions = null
@@ -3930,6 +4060,61 @@ private fun BitChordApp(
                         {
                             browseActions = null
                             scope.launch { Downloads.deleteCollection(context, id) }
+                        }
+                    },
+                )
+            }
+        }
+
+        // ---- Reorder an owned playlist ----
+        // Dragging a row must not also drag the sheet shut — the list's own
+        // overscroll is the only path left once NestedScroll eats the rest,
+        // and one that pulled the sheet down instead would throw the new order
+        // away. (Material3 1.3 has no sheetGesturesEnabled; the row drags
+        // consume their own events, so the list's overscroll is the only path.)
+        reorderTarget?.let { target ->
+            val close = { reorderTarget = null }
+            val keepSheetStill = remember {
+                object : NestedScrollConnection {
+                    override fun onPostScroll(
+                        consumed: Offset,
+                        available: Offset,
+                        source: NestedScrollSource,
+                    ) = available
+
+                    override suspend fun onPostFling(
+                        consumed: Velocity,
+                        available: Velocity,
+                    ) = available
+                }
+            }
+            ModalBottomSheet(
+                onDismissRequest = close,
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = Color.Transparent,
+                dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+            ) {
+                ReorderPlaylistSheet(
+                    modifier = Modifier.nestedScroll(keepSheetStill),
+                    playlist = target,
+                    entries = reorderEntries,
+                    saving = reorderSaving,
+                    hazeState = hazeState,
+                    pagePalette = detail?.takeIf { it.browseId == target.browseId }
+                        ?.let { detailPalette },
+                    onClose = close,
+                    onSave = { reordered ->
+                        val original = (reorderEntries as? UiState.Success)?.data.orEmpty()
+                        reorderSaving = true
+                        viewModel.reorderPlaylist(target, original, reordered) { saved ->
+                            reorderSaving = false
+                            showQueueNotice(
+                                context.getString(
+                                    if (saved) R.string.playlist_reordered else R.string.reorder_failed,
+                                ),
+                            )
+                            if (saved && reorderTarget == target) reorderTarget = null
                         }
                     },
                 )
@@ -4326,6 +4511,39 @@ private fun BitChordApp(
             BackHandler { showSpotifyCanvasAuth = false }
             SpotifyCanvasAuthScreen(
                 onNavigateUp = { showSpotifyCanvasAuth = false }
+            )
+        }
+
+        if (showSpotifyImportDialog) {
+            BackHandler { showSpotifyImportDialog = false }
+            SpotifyImportAlert(
+                hazeState = hazeState,
+                signedIn = signedIn,
+                onImported = { title, privacy, songs ->
+                    viewModel.createPlaylistWithVideoIds(
+                        title,
+                        privacy,
+                        songs.map { it.videoId },
+                        songs,
+                    ) { browseId, pTitle, savedLocally ->
+                        showQueueNotice(
+                            context.getString(
+                                if (savedLocally && signedIn) R.string.spotify_import_local_fallback
+                                else R.string.spotify_import_done,
+                                pTitle,
+                            ),
+                        )
+                        browseId?.let { id ->
+                            viewModel.openDetail(
+                                id,
+                                pTitle,
+                                "${songs.size} songs",
+                                songs.firstOrNull()?.thumbnailUrl,
+                            )
+                        }
+                    }
+                },
+                onDismiss = { showSpotifyImportDialog = false },
             )
         }
 

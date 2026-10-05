@@ -70,7 +70,16 @@ data class ArtworkPalette(
 )
 
 /**
- * Pulls [ArtworkPalette] out of the artwork at [imageUrl].
+ * Colours that came with the artwork rather than from decoding it — Apple
+ * Music publishes a background and a text colour for every artist photograph.
+ */
+@Immutable
+data class ArtworkKeyColors(val background: Color, val accent: Color)
+
+/**
+ * Pulls [ArtworkPalette] out of the artwork at [imageUrl], or out of
+ * [keyColors] when the source already supplied them and there is nothing to
+ * decode.
  *
  * Artwork that has already been read once is tinted on the very first frame,
  * off [seedCache] — a sheet opened from a page it shares a cover with, or a
@@ -99,10 +108,14 @@ fun rememberArtworkPalette(
      * out of the cache or off the network.
      */
     artPx: Int = CARD_ART_PX,
+    keyColors: ArtworkKeyColors? = null,
 ): ArtworkPalette {
     val scheme = MaterialTheme.colorScheme
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
-    val seed = rememberArtworkSeed(imageUrl, artPx)
+    // Always asked, so the composable call is unconditional; handed nothing to
+    // read when the colours are already in hand.
+    val decoded = rememberArtworkSeed(if (keyColors == null) imageUrl else null, artPx)
+    val seed = keyColors?.toSeed() ?: decoded
     val seedPalette = remember(seed, dark) { seed?.toPalette(dark) }
     // Last sleeve-derived colours — kept across URL changes so a refresh does
     // not briefly paint the theme while the new bitmap is still decoding.
@@ -115,8 +128,10 @@ fun rememberArtworkPalette(
     }
     // Whether the colours were there from the first frame. If they were, there
     // is nothing to crossfade *from* and animating would only put a delay in
-    // front of a surface that could already be right.
-    val knownUpFront = remember(imageUrl) { seed != null }
+    // front of a surface that could already be right. [keyColors] counts too —
+    // an artist page that just got Apple's palette should cut, not ease out of
+    // the theme placeholder it was holding while the lookup ran.
+    val knownUpFront = remember(imageUrl, keyColors) { seed != null }
 
     val themeFallback = ArtworkPalette(
         background = scheme.background,
@@ -213,6 +228,13 @@ private data class Seed(
     val vibrant: Color,
     val edge: Color,
     val topBandLuminance: Float,
+)
+
+private fun ArtworkKeyColors.toSeed() = Seed(
+    dominant = background,
+    vibrant = accent,
+    edge = background,
+    topBandLuminance = relativeLuminance(background.toArgb()),
 )
 
 private fun seedOf(bitmap: Bitmap): Seed? {

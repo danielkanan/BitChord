@@ -236,6 +236,7 @@
     <string name="medium">Média</string>
     <string name="high">Alta</string>
     <string name="standard">Padrão</string>
+    <string name="mixing">Mixando</string>
     <string name="lossless">Sem perdas</string>
     <string name="system">Sistema</string>
     <string name="light">Claro</string>
@@ -381,6 +382,9 @@
     <string name="your_playlists">Suas playlists</string>
     <string name="who_can_see_it">Quem pode ver isso</string>
     <string name="about_artist">Sobre o artista</string>
+    <string name="recent_album">Álbum recente</string>
+    <string name="recent_single">Single recente</string>
+    <string name="recent_ep">EP recente</string>
     <string name="about_album">Sobre o álbum</string>
     <string name="nothing_matches">Nada aqui corresponde a “%1$s”</string>
     <string name="close_search">Fechar pesquisa</string>
@@ -939,6 +943,7 @@
     <string name="prefer_usb_dac">Preferir DAC USB</string>
     <string name="loudness_normalization">Normalização de volume</string>
     <string name="loudness_normalization_subtitle">Deixa todas as faixas com a mesma intensidade sonora</string>
+    <string name="loudness_off_on_speaker">Desativar no altifalante do telefone</string>
     <string name="loudness_target">Intensidade alvo</string>
     <string name="loudness_target_subtitle">Mais baixo combina com fones; mais alto, com o carro ou o alto-falante do celular</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1308,4 +1313,19 @@
 
 
 
+    <string name="lyrics_share_title">Partilhar a letra</string>
+    <string name="lyrics_share_description">Os versos que escolheste, compostos num cartão com a capa.</string>
+    <string name="lyrics_share_story">Converter em story</string>
+    <string name="lyrics_share_story_revert">Voltar ao cartão</string>
+    <string name="lyrics_share_pick_limit">O cartão está cheio</string>
+    <string name="saved_bang">Guardado!</string>
+    <string name="share_your_lyrics">Enviar o teu cartão de letra</string>
+    <string name="your_lyrics_card">O teu cartão de letra</string>
+    <string name="source_needs_lossless_bt_unknown">Precisa de uma saída sem perdas · não é possível saber qual codec Bluetooth está em uso</string>
+    <string name="lossless_output_permission">Verificar codec Bluetooth</string>
+    <string name="lossless_output_permission_detail">Permita Dispositivos por perto para que fones LDAC ou LHDC liberem os complementos sem perdas</string>
+    <string name="lossless_output_permission_denied">A permissão de Dispositivos próximos está desativada</string>
+    <string name="lossless_output_permission_denied_detail">Toque para abrir Configurações e permitir Dispositivos próximos — sem ela não conseguimos ler o seu codec Bluetooth</string>
+    <string name="source_needs_lossless_output">Precisa de uma saída sem perdas · use um dispositivo compatível com áudio sem perdas</string>
+    <string name="source_needs_lossless_bt_codec">Precisa de uma saída sem perdas · o Bluetooth está em %1$s; use um dispositivo compatível com áudio sem perdas</string>
 </resources>

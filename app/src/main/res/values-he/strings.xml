@@ -235,6 +235,7 @@
     <string name="medium">בינוני</string>
     <string name="high">גבוה</string>
     <string name="standard">סטנדרטי</string>
+    <string name="mixing">מיקס</string>
     <string name="lossless">Lossless</string>
     <string name="system">מערכת</string>
     <string name="light">בהיר</string>
@@ -380,6 +381,9 @@
     <string name="your_playlists">רשימות ההשמעה שלך</string>
     <string name="who_can_see_it">מי יכול לראות את זה</string>
     <string name="about_artist">אודות האמן</string>
+    <string name="recent_album">אלבום אחרון</string>
+    <string name="recent_single">סינגל אחרון</string>
+    <string name="recent_ep">EP אחרון</string>
     <string name="about_album">אודות האלבום</string>
     <string name="nothing_matches">שום דבר כאן לא תואם ל-“%1$s”</string>
     <string name="close_search">סגור חיפוש</string>
@@ -939,6 +943,7 @@
     <string name="prefer_usb_dac">העדף USB DAC</string>
     <string name="loudness_normalization">נרמול עוצמה</string>
     <string name="loudness_normalization_subtitle">מביא כל רצועה לאותה עוצמה נשמעת</string>
+    <string name="loudness_off_on_speaker">השבתה ברמקול הטלפון</string>
     <string name="loudness_target">עוצמת יעד</string>
     <string name="loudness_target_subtitle">שקט יותר מתאים לאוזניות; חזק יותר לרכב או לרמקול הטלפון</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1308,4 +1313,19 @@
 
 
 
+    <string name="lyrics_share_title">שיתוף המילים</string>
+    <string name="lyrics_share_description">השורות שבחרת, על כרטיס עם העטיפה.</string>
+    <string name="lyrics_share_story">המר לסטורי</string>
+    <string name="lyrics_share_story_revert">חזרה לכרטיס</string>
+    <string name="lyrics_share_pick_limit">הכרטיס מלא</string>
+    <string name="saved_bang">נשמר!</string>
+    <string name="share_your_lyrics">שליחת כרטיס המילים</string>
+    <string name="your_lyrics_card">כרטיס המילים שלך</string>
+    <string name="source_needs_lossless_bt_unknown">דורש פלט ללא אובדן · לא ניתן לדעת באיזה קודק Bluetooth נעשה שימוש</string>
+    <string name="lossless_output_permission">בדיקת קודק Bluetooth</string>
+    <string name="lossless_output_permission_detail">אפשרו מכשירים בקרבת מקום כדי שאוזניות LDAC או LHDC יפתחו תוספים ללא אובדן</string>
+    <string name="lossless_output_permission_denied">הרשאת מכשירים בקרבת מקום כבויה</string>
+    <string name="lossless_output_permission_denied_detail">הקישו לפתיחת ההגדרות ולאישור מכשירים בקרבת מקום — בלעדיה לא נוכל לזהות את מקודד ה-Bluetooth שלכם</string>
+    <string name="source_needs_lossless_output">דורש פלט ללא אובדן · השתמשו במכשיר שתומך באודיו ללא אובדן</string>
+    <string name="source_needs_lossless_bt_codec">דורש פלט ללא אובדן · ה‑Bluetooth משתמש ב‑%1$s; השתמשו במכשיר שתומך באודיו ללא אובדן</string>
 </resources>

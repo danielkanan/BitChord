@@ -25,10 +25,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -83,12 +86,16 @@ import java.util.Locale
  * [song] is null when the flow started from the Library tab rather than from a
  * track, which is the one case where the header has no track to draw and
  * "New playlist" is the whole point of the sheet.
+ *
+ * Playlists are ticked rather than picked: one track often belongs in more
+ * than one list, and a sheet that closed on the first tap meant opening it
+ * again for each. [onAdd] gets every ticked playlist at once.
  */
 @Composable
 fun PlaylistPickerSheet(
     playlists: List<UserPlaylist>,
     loading: Boolean,
-    onPick: (UserPlaylist) -> Unit,
+    onAdd: (List<UserPlaylist>) -> Unit,
     onCreate: (String, PlaylistPrivacy) -> Unit,
     modifier: Modifier = Modifier,
     song: Song? = null,
@@ -97,6 +104,9 @@ fun PlaylistPickerSheet(
     pagePalette: ArtworkPalette? = null,
 ) {
     var creating by remember { mutableStateOf(startCreating) }
+    // By id rather than by value: the list is re-fetched under an open sheet,
+    // and a refreshed row must stay ticked.
+    var selected by remember { mutableStateOf(emptySet<String>()) }
     val songPalette = rememberArtworkPalette(song?.thumbnailUrl, artPx = ROW_ART_PX)
     val palette = pagePalette ?: song?.let { songPalette }
     val chrome = palette?.toFrostChrome() ?: frostChromeColors()
@@ -169,8 +179,53 @@ fun PlaylistPickerSheet(
                 // it scrolls inside the sheet instead.
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     items(playlists, key = { it.playlistId }) { playlist ->
-                        PlaylistRow(playlist = playlist, onClick = { onPick(playlist) })
+                        val ticked = playlist.playlistId in selected
+                        PlaylistRow(
+                            playlist = playlist,
+                            selected = ticked,
+                            onClick = {
+                                selected = if (ticked) {
+                                    selected - playlist.playlistId
+                                } else {
+                                    selected + playlist.playlistId
+                                }
+                            },
+                        )
                     }
+                }
+                Spacer(Modifier.height(12.dp))
+                val buttonShape = RoundedCornerShape(percent = 50)
+                Button(
+                    onClick = { onAdd(playlists.filter { it.playlistId in selected }) },
+                    enabled = selected.isNotEmpty(),
+                    shape = buttonShape,
+                    border = BorderStroke(GLASS_EDGE_WIDTH, chrome.edge),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = chrome.accent,
+                        contentColor = if (chrome.accent.luminance() > 0.45f) {
+                            Color(0xFF1A1A1A)
+                        } else {
+                            Color.White
+                        },
+                        disabledContainerColor = chrome.tint.copy(alpha = 0.55f),
+                        disabledContentColor = chrome.contentVariant.copy(alpha = 0.5f),
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp)
+                        .height(46.dp),
+                ) {
+                    Text(
+                        if (selected.isEmpty()) {
+                            stringResource(R.string.add_to_playlist)
+                        } else {
+                            pluralStringResource(
+                                R.plurals.add_to_playlists_count,
+                                selected.size,
+                                selected.size,
+                            )
+                        },
+                    )
                 }
             }
         }
@@ -179,7 +234,7 @@ fun PlaylistPickerSheet(
 }
 
 @Composable
-private fun PlaylistRow(playlist: UserPlaylist, onClick: () -> Unit) {
+private fun PlaylistRow(playlist: UserPlaylist, selected: Boolean, onClick: () -> Unit) {
     val chrome = frostChromeColors()
     Row(
         modifier = Modifier
@@ -216,6 +271,13 @@ private fun PlaylistRow(playlist: UserPlaylist, onClick: () -> Unit) {
                 )
             }
         }
+        Spacer(Modifier.width(12.dp))
+        Icon(
+            imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (selected) chrome.accent else chrome.contentVariant,
+            modifier = Modifier.size(24.dp),
+        )
     }
 }
 

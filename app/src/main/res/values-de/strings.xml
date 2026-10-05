@@ -234,6 +234,7 @@
     <string name="medium">Mittel</string>
     <string name="high">Hoch</string>
     <string name="standard">Standard</string>
+    <string name="mixing">Mixen</string>
     <string name="lossless">Verlustfrei</string>
     <string name="system">System</string>
     <string name="light">Hell</string>
@@ -399,6 +400,9 @@
     <string name="your_playlists">Deine Playlists</string>
     <string name="who_can_see_it">Wer es sehen kann</string>
     <string name="about_artist">Über den Künstler</string>
+    <string name="recent_album">Neues Album</string>
+    <string name="recent_single">Neue Single</string>
+    <string name="recent_ep">Neue EP</string>
     <string name="about_album">Über das Album</string>
     <string name="nothing_matches">Hier passt nichts zu „%1$s“</string>
     <string name="close_search">Suche schließen</string>
@@ -934,6 +938,7 @@
     <string name="prefer_usb_dac">USB-DAC bevorzugen</string>
     <string name="loudness_normalization">Lautstärkenormalisierung</string>
     <string name="loudness_normalization_subtitle">Bringt jeden Titel auf dieselbe Lautheit</string>
+    <string name="loudness_off_on_speaker">Auf dem Handylautsprecher deaktivieren</string>
     <string name="loudness_target">Ziel-Lautheit</string>
     <string name="loudness_target_subtitle">Leiser passt zu Kopfhörern, lauter zum Auto oder Handylautsprecher</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1303,4 +1308,19 @@
 
 
 
+    <string name="lyrics_share_title">Songtext teilen</string>
+    <string name="lyrics_share_description">Die Zeilen, die du ausgewählt hast, auf einer Karte mit dem Cover.</string>
+    <string name="lyrics_share_story">Als Story formatieren</string>
+    <string name="lyrics_share_story_revert">Zurück zur Karte</string>
+    <string name="lyrics_share_pick_limit">Karte ist voll</string>
+    <string name="saved_bang">Gespeichert!</string>
+    <string name="share_your_lyrics">Textkarte senden</string>
+    <string name="your_lyrics_card">Deine Textkarte</string>
+    <string name="source_needs_lossless_bt_unknown">Braucht eine verlustfreie Ausgabe · der Bluetooth-Codec ist nicht erkennbar</string>
+    <string name="lossless_output_permission">Bluetooth-Codec prüfen</string>
+    <string name="lossless_output_permission_detail">Geräte in der Nähe erlauben, damit LDAC- oder LHDC-Kopfhörer Lossless-Addons freischalten</string>
+    <string name="lossless_output_permission_denied">Berechtigung für Geräte in der Nähe ist aus</string>
+    <string name="lossless_output_permission_denied_detail">Tippe, um die Einstellungen zu öffnen und Geräte in der Nähe zuzulassen — sonst kann dein Bluetooth-Codec nicht gelesen werden</string>
+    <string name="source_needs_lossless_output">Braucht eine verlustfreie Ausgabe · nutze ein Gerät, das Lossless unterstützt</string>
+    <string name="source_needs_lossless_bt_codec">Braucht eine verlustfreie Ausgabe · Bluetooth nutzt %1$s; nutze ein Gerät, das Lossless unterstützt</string>
 </resources>

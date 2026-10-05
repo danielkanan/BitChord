@@ -234,6 +234,7 @@
     <string name="medium">मध्यम</string>
     <string name="high">ज़्यादा</string>
     <string name="standard">मानक</string>
+    <string name="mixing">मिक्सिंग</string>
     <string name="lossless">लॉसलेस</string>
     <string name="system">सिस्टम</string>
     <string name="light">लाइट</string>
@@ -399,6 +400,9 @@
     <string name="your_playlists">आपकी प्लेलिस्ट</string>
     <string name="who_can_see_it">इसे कौन देख सकता है</string>
     <string name="about_artist">कलाकार के बारे में</string>
+    <string name="recent_album">हाल का एल्बम</string>
+    <string name="recent_single">हाल का सिंगल</string>
+    <string name="recent_ep">हाल की EP</string>
     <string name="about_album">एल्बम के बारे में</string>
     <string name="nothing_matches">यहां कुछ भी “%1$s” से मेल नहीं खाता</string>
     <string name="close_search">खोज बंद करें</string>
@@ -934,6 +938,7 @@
     <string name="prefer_usb_dac">USB DAC को प्राथमिकता दें</string>
     <string name="loudness_normalization">लाउडनेस नॉर्मलाइज़ेशन</string>
     <string name="loudness_normalization_subtitle">हर ट्रैक को एक जैसी लाउडनेस पर लाता है</string>
+    <string name="loudness_off_on_speaker">फ़ोन स्पीकर पर बंद करें</string>
     <string name="loudness_target">लक्ष्य लाउडनेस</string>
     <string name="loudness_target_subtitle">कम हेडफ़ोन के लिए ठीक है; ज़्यादा कार या फ़ोन स्पीकर के लिए</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1303,4 +1308,19 @@
 
 
 
+    <string name="lyrics_share_title">गाने के शब्द साझा करें</string>
+    <string name="lyrics_share_description">आपकी चुनी हुई पंक्तियाँ, कवर के साथ एक कार्ड पर।</string>
+    <string name="lyrics_share_story">स्टोरी बनाएँ</string>
+    <string name="lyrics_share_story_revert">कार्ड पर वापस जाएँ</string>
+    <string name="lyrics_share_pick_limit">कार्ड भर चुका है</string>
+    <string name="saved_bang">सहेजा गया!</string>
+    <string name="share_your_lyrics">शब्द कार्ड भेजें</string>
+    <string name="your_lyrics_card">आपका शब्द कार्ड</string>
+    <string name="source_needs_lossless_bt_unknown">लॉसलेस आउटपुट चाहिए · पता नहीं चल रहा कि कौन-सा Bluetooth कोडेक चल रहा है</string>
+    <string name="lossless_output_permission">Bluetooth कोडेक जाँचें</string>
+    <string name="lossless_output_permission_detail">आस-पास के डिवाइस की अनुमति दें ताकि LDAC या LHDC हेडफ़ोन लॉसलेस ऐड-ऑन खोल सकें</string>
+    <string name="lossless_output_permission_denied">नज़दीकी डिवाइस अनुमति बंद है</string>
+    <string name="lossless_output_permission_denied_detail">सेटिंग्स खोलने और नज़दीकी डिवाइस अनुमति देने के लिए टैप करें — इसके बिना आपका ब्लूटूथ कोडेक नहीं पढ़ा जा सकता</string>
+    <string name="source_needs_lossless_output">लॉसलेस आउटपुट चाहिए · लॉसलेस सपोर्ट करने वाला डिवाइस इस्तेमाल करें</string>
+    <string name="source_needs_lossless_bt_codec">लॉसलेस आउटपुट चाहिए · Bluetooth %1$s पर है; लॉसलेस सपोर्ट करने वाला डिवाइस इस्तेमाल करें</string>
 </resources>

@@ -244,6 +244,7 @@
     <string name="medium">Среднее</string>
     <string name="high">Высокое</string>
     <string name="standard">Стандартное</string>
+    <string name="mixing">Сведение</string>
     <string name="lossless">Без потерь</string>
     <string name="system">Системная</string>
     <string name="light">Светлая</string>
@@ -414,6 +415,9 @@
     <string name="your_playlists">Ваши плейлисты</string>
     <string name="who_can_see_it">Кто может это видеть</string>
     <string name="about_artist">Об исполнителе</string>
+    <string name="recent_album">Недавний альбом</string>
+    <string name="recent_single">Недавний сингл</string>
+    <string name="recent_ep">Недавний EP</string>
     <string name="about_album">Об альбоме</string>
     <string name="nothing_matches">Здесь ничего не соответствует запросу «%1$s»</string>
     <string name="close_search">Закрыть поиск</string>
@@ -960,6 +964,7 @@
     <string name="prefer_usb_dac">Предпочитать USB ЦАП</string>
     <string name="loudness_normalization">Нормализация громкости</string>
     <string name="loudness_normalization_subtitle">Выравнивает громкость всех треков</string>
+    <string name="loudness_off_on_speaker">Отключить на динамике телефона</string>
     <string name="loudness_target">Целевая громкость</string>
     <string name="loudness_target_subtitle">Тише — для наушников; громче — для машины или динамика телефона</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1329,4 +1334,19 @@
 
 
 
+    <string name="lyrics_share_title">Поделиться текстом</string>
+    <string name="lyrics_share_description">Выбранные строки на карточке вместе с обложкой.</string>
+    <string name="lyrics_share_story">Сделать для сторис</string>
+    <string name="lyrics_share_story_revert">Вернуть карточку</string>
+    <string name="lyrics_share_pick_limit">Карточка заполнена</string>
+    <string name="saved_bang">Сохранено!</string>
+    <string name="share_your_lyrics">Отправить карточку с текстом</string>
+    <string name="your_lyrics_card">Ваша карточка с текстом</string>
+    <string name="source_needs_lossless_bt_unknown">Нужен выход без потерь · не удаётся определить используемый Bluetooth-кодек</string>
+    <string name="lossless_output_permission">Проверить Bluetooth-кодек</string>
+    <string name="lossless_output_permission_detail">Разрешите доступ к устройствам поблизости, чтобы наушники LDAC или LHDC открыли аддоны без потерь</string>
+    <string name="lossless_output_permission_denied">Разрешение «Устройства поблизости» выключено</string>
+    <string name="lossless_output_permission_denied_detail">Нажмите, чтобы открыть настройки и разрешить «Устройства поблизости» — без него мы не сможем определить ваш кодек Bluetooth</string>
+    <string name="source_needs_lossless_output">Нужен выход без потерь · используйте устройство с поддержкой звука без потерь</string>
+    <string name="source_needs_lossless_bt_codec">Нужен выход без потерь · Bluetooth работает на %1$s; используйте устройство с поддержкой звука без потерь</string>
 </resources>

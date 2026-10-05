@@ -63,6 +63,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -192,18 +193,30 @@ internal fun PlayerScrubber(
     durationMs: Long,
     /** A version switch's wait, drawn along the bar — see [ThinSlider.loading]. */
     loading: Boolean,
+    /** An analysed Automix handoff, drawn as a travelling sheen. */
+    mixing: Boolean,
     transitionWindow: ClosedFloatingPointRange<Float>?,
     onScrub: (Float) -> Unit,
     onScrubFinished: () -> Unit,
     centerLabel: @Composable BoxScope.() -> Unit = {},
 ) {
     val shown = shown()
+    // Held as a State and read only inside the bar's draw: the blend republishes
+    // every fade tick, and collecting it by value here would recompose the
+    // scrubber and its labels thirty times a second for a change only the
+    // canvas needs.
+    val mixBlend = AppSettings.smartMixBlend.collectAsStateWithLifecycle()
+    val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    // One clock for the bar and the "Mixing" label, so they breathe on the same beat.
+    val mixPulse = rememberMixPulse({ mixBlend.value }, enabled = !reduceAnimation)
     Column(Modifier.fillMaxWidth()) {
         ThinSlider(
             value = shown,
             onValueChange = onScrub,
             onValueChangeFinished = onScrubFinished,
             loading = loading,
+            mixing = mixing,
+            mixPulse = mixPulse,
             transitionWindow = transitionWindow,
         )
         Box(
@@ -230,11 +243,47 @@ internal fun PlayerScrubber(
             }
             // Pinned to the box's own centre rather than squeezed into the gap
             // between the two timestamps: that gap's width changes by a digit's
-            // worth every time a minute rolls over.
-            centerLabel()
+            // worth every time a minute rolls over. Cross-faded with "Mixing"
+            // for as long as a blend holds the bar.
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = 1f - mixPulse.cover },
+            ) {
+                centerLabel()
+            }
+            val mixingShown by remember { derivedStateOf { mixPulse.cover > 0f } }
+            if (mixingShown) {
+                MixingLabel(mixPulse, Modifier.align(Alignment.Center))
+            }
         }
     }
 }
+
+/**
+ * "Mixing", in the quality badge's place while an Automix blend runs, breathing on the same
+ * beat as the bar above it. Its opacity is read in a graphics layer, so the pulse redraws the
+ * label every frame without recomposing it. Plain text in the badge's own type, no icon and
+ * no glow: over artwork, a white haze reads as grey fog rather than light.
+ */
+@Composable
+private fun MixingLabel(pulse: MixPulse, modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(R.string.mixing),
+        modifier = modifier.graphicsLayer {
+            alpha = pulse.cover * pulse.alpha(1f, restShare = MIXING_LABEL_REST)
+        },
+        style = MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + 1).sp,
+        ),
+        color = Color.White.copy(alpha = 0.85f),
+        maxLines = 1,
+    )
+}
+
+/** The label dips only to half between beats: text fading further stops reading as a word. */
+private const val MIXING_LABEL_REST = 0.5f
 
 /**
  * The quality badge between the timestamps — "Lossless", "Hi-Res", a loading

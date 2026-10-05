@@ -250,6 +250,7 @@
     <string name="medium">ปานกลาง</string>
     <string name="high">สูง</string>
     <string name="standard">มาตรฐาน</string>
+    <string name="mixing">กำลังมิกซ์</string>
     <string name="lossless">ไม่สูญเสียคุณภาพ</string>
     <string name="system">ระบบ</string>
     <string name="light">สว่าง</string>
@@ -413,6 +414,9 @@
     <string name="your_playlists">เพลย์ลิสต์ของคุณ</string>
     <string name="who_can_see_it">ใครสามารถดูได้บ้าง</string>
     <string name="about_artist">เกี่ยวกับศิลปิน</string>
+    <string name="recent_album">อัลบั้มล่าสุด</string>
+    <string name="recent_single">ซิงเกิลล่าสุด</string>
+    <string name="recent_ep">อีพีล่าสุด</string>
     <string name="about_album">เกี่ยวกับอัลบั้ม</string>
     <string name="nothing_matches">ไม่มีอะไรตรงกับ “%1$s”</string>
     <string name="close_search">ปิดการค้นหา</string>
@@ -1140,6 +1144,7 @@
     <string name="prefer_usb_dac">Prefer USB DAC</string>
     <string name="loudness_normalization">ปรับระดับความดังให้เท่ากัน</string>
     <string name="loudness_normalization_subtitle">ปรับทุกแทร็กให้ดังเท่ากัน</string>
+    <string name="loudness_off_on_speaker">ปิดบนลำโพงโทรศัพท์</string>
     <string name="loudness_target">ความดังเป้าหมาย</string>
     <string name="loudness_target_subtitle">เบาลงเหมาะกับหูฟัง ดังขึ้นเหมาะกับในรถหรือลำโพงโทรศัพท์</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1292,4 +1297,19 @@
     <string name="card_songs_format">%1$s songs</string>
 
 
+    <string name="lyrics_share_title">แชร์เนื้อเพลง</string>
+    <string name="lyrics_share_description">บรรทัดที่คุณเลือก เรียงเป็นการ์ดพร้อมปก</string>
+    <string name="lyrics_share_story">แปลงเป็นสตอรี่</string>
+    <string name="lyrics_share_story_revert">กลับเป็นการ์ด</string>
+    <string name="lyrics_share_pick_limit">การ์ดเต็มแล้ว</string>
+    <string name="saved_bang">บันทึกแล้ว!</string>
+    <string name="share_your_lyrics">ส่งการ์ดเนื้อเพลงของคุณ</string>
+    <string name="your_lyrics_card">การ์ดเนื้อเพลงของคุณ</string>
+    <string name="source_needs_lossless_bt_unknown">ต้องใช้เอาต์พุตแบบ lossless · ไม่ทราบว่ากำลังใช้ตัวแปลงสัญญาณ Bluetooth ใด</string>
+    <string name="lossless_output_permission">ตรวจสอบตัวแปลงสัญญาณ Bluetooth</string>
+    <string name="lossless_output_permission_detail">อนุญาตอุปกรณ์ใกล้เคียงเพื่อให้หูฟัง LDAC หรือ LHDC ปลดล็อกส่วนเสริมแบบ lossless</string>
+    <string name="lossless_output_permission_denied">สิทธิ์อุปกรณ์ใกล้เคียงปิดอยู่</string>
+    <string name="lossless_output_permission_denied_detail">แตะเพื่อเปิดการตั้งค่าและอนุญาตอุปกรณ์ใกล้เคียง — หากไม่มีจะอ่านโคเดกบลูทูธของคุณไม่ได้</string>
+    <string name="source_needs_lossless_output">ต้องใช้เอาต์พุตแบบ lossless · ใช้อุปกรณ์ที่รองรับ lossless</string>
+    <string name="source_needs_lossless_bt_codec">ต้องใช้เอาต์พุตแบบ lossless · Bluetooth ใช้ %1$s อยู่ ใช้อุปกรณ์ที่รองรับ lossless</string>
 </resources>

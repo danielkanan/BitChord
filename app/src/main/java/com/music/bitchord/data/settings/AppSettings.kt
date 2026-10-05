@@ -8,8 +8,10 @@ import android.net.NetworkCapabilities
 import androidx.media3.common.Player
 import com.music.bitchord.BuildConfig
 import com.music.bitchord.auth.AuthStore
+import com.music.bitchord.data.canvas.SpotifyToken
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.data.spotify.LocalPlaylistStore
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -321,6 +323,9 @@ object AppSettings {
      */
     val loudnessNormalization = MutableStateFlow(true)
 
+    /** Skip loudness normalization while the active output is the phone's own speaker. */
+    val loudnessOffOnSpeaker = MutableStateFlow(true)
+
     /**
      * Whether a source offering a Dolby Atmos rendition is allowed to serve it.
      *
@@ -560,8 +565,19 @@ object AppSettings {
     /** User-issued credential required by api.paxsenix.org. */
     val paxSenixApiKey = MutableStateFlow("")
 
-    /** Disk budget for cached audio. [AudioCache][com.music.bitchord.playback.AudioCache] evicts past it. */
+    /**
+     * Disk budget for cached audio. [AudioCache][com.music.bitchord.playback.AudioCache] evicts past it.
+     * [UNLIMITED_CACHE_LIMIT_BYTES] means no ceiling of the app's own.
+     */
     val audioCacheLimitBytes = MutableStateFlow(DEFAULT_CACHE_LIMIT_BYTES)
+
+    /**
+     * Whether Library's "On device" shelf carries the Cached songs folder —
+     * the YouTube and JioSaavn tracks the song cache is holding. Off by
+     * default: the cache is an implementation detail most people never need
+     * to look inside.
+     */
+    val showCacheFolder = MutableStateFlow(false)
 
     // ── Replay ──────────────────────────────────────────────────────────────
 
@@ -729,6 +745,13 @@ object AppSettings {
     val smartMixInProgress = MutableStateFlow(false)
 
     /**
+     * The Automix blend in flight — its progress and the beat it runs on — or
+     * null between blends. Published by the crossfade controller every fade
+     * tick; read it in draw, not in composition.
+     */
+    val smartMixBlend = MutableStateFlow<MixBlend?>(null)
+
+    /**
      * True while a version switch is fetching and analysing the other cut
      * before playback actually moves. Drains into the loading bar drawn along
      * the scrubber itself — `ThinSlider.loading` — so the wait reads as work
@@ -782,6 +805,7 @@ object AppSettings {
     fun init(context: Context, authStore: AuthStore) {
         prefs = context.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
         this.authStore = authStore
+        LocalPlaylistStore.init(context)
         readAll()
         watchConnection(context)
     }
@@ -830,6 +854,7 @@ object AppSettings {
         }.getOrDefault(OutputPcmMode.PCM_16)
         preferUsbDac.value = prefs.getBoolean(KEY_PREFER_USB_DAC, false)
         loudnessNormalization.value = prefs.getBoolean(KEY_LOUDNESS_NORMALIZATION, true)
+        loudnessOffOnSpeaker.value = prefs.getBoolean(KEY_LOUDNESS_OFF_ON_SPEAKER, true)
         dolbyAtmos.value = prefs.getBoolean(KEY_DOLBY_ATMOS, true)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
         equalizerEnabled.value = prefs.getBoolean(KEY_EQ_ENABLED, false)
@@ -888,8 +913,8 @@ object AppSettings {
         prioritizeSyllableSync.value = prefs.getBoolean(KEY_PRIORITIZE_SYLLABLE_SYNC, false)
         paxSenixApiKey.value = prefs.getString(KEY_PAXSENIX_API_KEY, "").orEmpty()
         com.music.bitchord.data.lyrics.PaxSenix.setApiKey(paxSenixApiKey.value)
-        audioCacheLimitBytes.value = prefs.getLong(KEY_CACHE_LIMIT, DEFAULT_CACHE_LIMIT_BYTES)
-            .coerceIn(DEFAULT_CACHE_LIMIT_BYTES, MAX_CACHE_LIMIT_BYTES)
+        audioCacheLimitBytes.value = clampCacheLimit(prefs.getLong(KEY_CACHE_LIMIT, DEFAULT_CACHE_LIMIT_BYTES))
+        showCacheFolder.value = prefs.getBoolean(KEY_SHOW_CACHE_FOLDER, false)
         lastfmEnabled.value = prefs.getBoolean(KEY_LASTFM_ENABLED, false)
         lastfmUsername.value = prefs.getString(KEY_LASTFM_USERNAME, "").orEmpty()
         lastfmSessionKey.value = prefs.getString(KEY_LASTFM_SESSION_KEY, "").orEmpty()
@@ -1433,11 +1458,23 @@ object AppSettings {
         prefs.edit().putString(KEY_LAST_PLAYER_SCREEN, value.name).apply()
     }
 
-    /** Clamped to [DEFAULT_CACHE_LIMIT_BYTES]..[MAX_CACHE_LIMIT_BYTES] — the floor is the default, not zero. */
+    /**
+     * Clamped to [DEFAULT_CACHE_LIMIT_BYTES]..[MAX_CACHE_LIMIT_BYTES] — the floor is the default, not zero.
+     * Anything past [MAX_CACHE_LIMIT_BYTES] is [UNLIMITED_CACHE_LIMIT_BYTES].
+     */
     fun setAudioCacheLimitBytes(value: Long) {
-        val clamped = value.coerceIn(DEFAULT_CACHE_LIMIT_BYTES, MAX_CACHE_LIMIT_BYTES)
+        val clamped = clampCacheLimit(value)
         audioCacheLimitBytes.value = clamped
         prefs.edit().putLong(KEY_CACHE_LIMIT, clamped).apply()
+    }
+
+    private fun clampCacheLimit(value: Long): Long =
+        if (value > MAX_CACHE_LIMIT_BYTES) UNLIMITED_CACHE_LIMIT_BYTES
+        else value.coerceAtLeast(DEFAULT_CACHE_LIMIT_BYTES)
+
+    fun setShowCacheFolder(value: Boolean) {
+        showCacheFolder.value = value
+        prefs.edit().putBoolean(KEY_SHOW_CACHE_FOLDER, value).apply()
     }
 
     fun setLastfmEnabled(value: Boolean) {
@@ -1473,6 +1510,7 @@ object AppSettings {
     fun setSpotifySpdcToken(value: String) {
         spotifySpdcToken.value = value
         prefs.edit().putString(KEY_SPOTIFY_SPDC_TOKEN, value).apply()
+        SpotifyToken.invalidate()
     }
 
     fun setLastfmScrobbleEnabled(value: Boolean) {
@@ -1498,6 +1536,11 @@ object AppSettings {
     fun setPreferUsbDac(value: Boolean) {
         preferUsbDac.value = value
         prefs.edit().putBoolean(KEY_PREFER_USB_DAC, value).apply()
+    }
+
+    fun setLoudnessOffOnSpeaker(value: Boolean) {
+        loudnessOffOnSpeaker.value = value
+        prefs.edit().putBoolean(KEY_LOUDNESS_OFF_ON_SPEAKER, value).apply()
     }
 
     fun setLoudnessNormalization(value: Boolean) {
@@ -1906,6 +1949,9 @@ object AppSettings {
     const val DEFAULT_CACHE_LIMIT_BYTES = 512L * 1024 * 1024
     const val MAX_CACHE_LIMIT_BYTES = 10L * 1024 * 1024 * 1024
 
+    /** The cache limit with no ceiling: only free storage bounds it. */
+    const val UNLIMITED_CACHE_LIMIT_BYTES = Long.MAX_VALUE
+
     const val MIN_LYRICS_OFFSET_MS = -5_000
     const val MAX_LYRICS_OFFSET_MS = 5_000
 
@@ -1933,6 +1979,7 @@ object AppSettings {
     private const val KEY_OUTPUT_PCM_MODE = "output_pcm_mode"
     private const val KEY_PREFER_USB_DAC = "prefer_usb_dac"
     private const val KEY_LOUDNESS_NORMALIZATION = "loudness_normalization"
+    private const val KEY_LOUDNESS_OFF_ON_SPEAKER = "loudness_off_on_speaker"
     private const val KEY_DOLBY_ATMOS = "dolby_atmos"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
     private const val KEY_EQ_ENABLED = "equalizer_enabled"
@@ -1949,6 +1996,7 @@ object AppSettings {
     private const val KEY_REPEAT_MODE = "repeat_mode"
     private const val KEY_NERD_STATS = "show_nerd_stats"
     private const val KEY_CACHE_LIMIT = "audio_cache_limit_bytes"
+    private const val KEY_SHOW_CACHE_FOLDER = "show_cache_folder"
     private const val KEY_REDUCE_ANIMATION = "reduce_animation"
     private const val KEY_HIGH_PERFORMANCE_MODE = "high_performance_mode"
     private const val KEY_PERFORMANCE_REFRESH_RATE = "performance_refresh_rate"
@@ -2083,3 +2131,20 @@ data class SmartAnalysis(
  * transition is planned to occupy.
  */
 data class TransitionWindow(val start: Float, val end: Float)
+
+/**
+ * An Automix blend in flight, as the scrubber draws it: the beat it is running
+ * on, and whether it is moving. Only republished when one of those changes.
+ */
+data class MixBlend(
+    /**
+     * Wall-clock length of one beat at the tempo the blend is actually playing
+     * — after any beatmatch stretch and the listener's own speed — or 0 when
+     * neither track's tempo is known.
+     */
+    val beatMs: Float,
+    /** A `System.nanoTime()` at which a beat landed; with [beatMs], places every other one. */
+    val beatAnchorNanos: Long,
+    /** Whether the blend is playing rather than paused; a paused blend holds still. */
+    val playing: Boolean,
+)

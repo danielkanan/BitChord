@@ -211,6 +211,7 @@ fun SettingsScreen(
     val outputPcmMode by AppSettings.outputPcmMode.collectAsStateWithLifecycle()
     val preferUsbDac by AppSettings.preferUsbDac.collectAsStateWithLifecycle()
     val loudnessNormalization by AppSettings.loudnessNormalization.collectAsStateWithLifecycle()
+    val loudnessOffOnSpeaker by AppSettings.loudnessOffOnSpeaker.collectAsStateWithLifecycle()
     val outputStatus by AudioOutputStatus.current.collectAsStateWithLifecycle()
     val playingFormat by NerdStats.current.collectAsStateWithLifecycle()
     val playingDolbyAtmos = playingFormat?.isDolbyAtmos == true
@@ -597,6 +598,14 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setLoudnessNormalization(!loudnessNormalization) },
+                )
+            }
+            val loudnessSpeakerTitle = stringResource(R.string.loudness_off_on_speaker)
+            row(loudnessSpeakerTitle, "loudness", "speaker", "normalize") {
+                SettingsSubRow(
+                    title = loudnessSpeakerTitle,
+                    checked = loudnessOffOnSpeaker,
+                    onCheckedChange = AppSettings::setLoudnessOffOnSpeaker,
                 )
             }
             // Automix decides its own length from each pair of tracks —
@@ -1711,13 +1720,22 @@ internal fun AccountCard(
     account: Account?,
     onSignIn: () -> Unit,
     onClick: (() -> Unit)? = null,
+    /** Sits inside a [SettingsGroup] that already supplies the card, so draws none of its own. */
+    grouped: Boolean = false,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = GROUP_INSET)
-            .clip(GroupShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .then(
+                if (grouped) {
+                    Modifier
+                } else {
+                    Modifier
+                        .padding(horizontal = GROUP_INSET)
+                        .clip(GroupShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                },
+            )
             .then(
                 when {
                     signedIn && onClick != null -> Modifier.clickable(onClick = onClick)

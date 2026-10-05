@@ -42,8 +42,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -749,6 +751,8 @@ internal fun NewShelfCard(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier.width(SHELF_CARD_WIDTH),
+    /** A full-colour mark drawn in place of [icon], for a card that stands for a brand. */
+    @DrawableRes logo: Int? = null,
 ) {
     Column(
         modifier = modifier.clickable(onClick = onClick),
@@ -761,12 +765,23 @@ internal fun NewShelfCard(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(34.dp),
-            )
+            if (logo != null) {
+                // The mark is a disc with the bars cut out, so tinting it
+                // leaves the bars clear: white on dark, black on light.
+                Icon(
+                    painter = painterResource(logo),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(44.dp),
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(34.dp),
+                )
+            }
         }
         Spacer(Modifier.height(10.dp))
         Text(

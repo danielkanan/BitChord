@@ -505,13 +505,13 @@ object SourceResolver {
             // answer to it. YouTube's ladder is the only one that can be capped.
             is StreamRequest.Capped -> return@coroutineScope null
         }
-        // [SourceRegistry.active] rather than the playback list: a download is
-        // not budgeted by the connection's streaming ceiling. What it keeps is
-        // [DownloadQuality]'s answer and what it may spend is
+        // [SourceRegistry.activeForDownload] rather than the playback list: a
+        // download is not budgeted by the connection's streaming ceiling. What
+        // it keeps is [DownloadQuality]'s answer and what it may spend is
         // [AppSettings.wifiOnlyDownloads]'s, and a mobile-data rung of Medium
         // has no business deciding that a file saved over Wi-Fi later is a
-        // YouTube one.
-        val active = SourceRegistry.active()
+        // YouTube one. Addons that forbade downloads are already left out.
+        val active = SourceRegistry.activeForDownload()
         // YouTube can be switched off, and a download still goes to it when
         // nothing here answers — the download path never consults this list. So
         // an absent YouTube means everything enabled outranks it, which is

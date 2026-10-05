@@ -232,6 +232,7 @@
     <string name="medium">Średnie</string>
     <string name="high">Wysokie</string>
     <string name="standard">Standard</string>
+    <string name="mixing">Miksowanie</string>
     <string name="lossless">Lossless</string>
     <string name="system">System</string>
     <string name="light">Jasny</string>
@@ -377,6 +378,9 @@
     <string name="your_playlists">Twoje playlisty</string>
     <string name="who_can_see_it">Kto to widzi</string>
     <string name="about_artist">O artyście</string>
+    <string name="recent_album">Ostatni album</string>
+    <string name="recent_single">Ostatni singiel</string>
+    <string name="recent_ep">Ostatnia EP</string>
     <string name="about_album">O albumie</string>
     <string name="nothing_matches">Nic tu nie pasuje do „%1$s”</string>
     <string name="close_search">Zamknij wyszukiwanie</string>
@@ -970,6 +974,7 @@
     <string name="prefer_usb_dac">Preferuj USB DAC</string>
     <string name="loudness_normalization">Normalizacja głośności</string>
     <string name="loudness_normalization_subtitle">Wyrównuje głośność wszystkich utworów</string>
+    <string name="loudness_off_on_speaker">Wyłącz na głośniku telefonu</string>
     <string name="loudness_target">Docelowa głośność</string>
     <string name="loudness_target_subtitle">Ciszej pasuje do słuchawek; głośniej do samochodu lub głośnika telefonu</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1341,4 +1346,19 @@
 
 
 
+    <string name="lyrics_share_title">Udostępnij tekst</string>
+    <string name="lyrics_share_description">Wybrane wersy, ułożone na karcie z okładką.</string>
+    <string name="lyrics_share_story">Zmień na relację</string>
+    <string name="lyrics_share_story_revert">Wróć do karty</string>
+    <string name="lyrics_share_pick_limit">Karta jest pełna</string>
+    <string name="saved_bang">Zapisano!</string>
+    <string name="share_your_lyrics">Wyślij kartę tekstu</string>
+    <string name="your_lyrics_card">Twoja karta tekstu</string>
+    <string name="source_needs_lossless_bt_unknown">Wymaga wyjścia bezstratnego · nie można ustalić, jaki kodek Bluetooth jest używany</string>
+    <string name="lossless_output_permission">Sprawdź kodek Bluetooth</string>
+    <string name="lossless_output_permission_detail">Zezwól na Urządzenia w pobliżu, by słuchawki LDAC lub LHDC odblokowały dodatki bezstratne</string>
+    <string name="lossless_output_permission_denied">Uprawnienie Urządzenia w pobliżu jest wyłączone</string>
+    <string name="lossless_output_permission_denied_detail">Dotknij, aby otworzyć ustawienia i zezwolić na Urządzenia w pobliżu — bez tego nie odczytamy Twojego kodeka Bluetooth</string>
+    <string name="source_needs_lossless_output">Wymaga wyjścia bezstratnego · użyj urządzenia obsługującego dźwięk bezstratny</string>
+    <string name="source_needs_lossless_bt_codec">Wymaga wyjścia bezstratnego · Bluetooth używa %1$s; użyj urządzenia obsługującego dźwięk bezstratny</string>
 </resources>

@@ -276,6 +276,24 @@ fun LazyListScope.feedMoreSkeleton() {
     item(key = "skeleton:more") { ShelfSkeleton() }
 }
 
+/** Placeholders for the Replay credit cards at the head of Library. */
+@Composable
+fun ReplayCardRowSkeleton(modifier: Modifier = Modifier) {
+    LazyRow(
+        modifier = modifier.padding(vertical = 6.dp),
+        contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        userScrollEnabled = false,
+    ) {
+        items(2) {
+            ShimmerBox(
+                modifier = Modifier.width(300.dp).aspectRatio(1.586f),
+                shape = RoundedCornerShape(20.dp),
+            )
+        }
+    }
+}
+
 /** The signed-in library: saved collections, then the run of liked tracks. */
 fun LazyListScope.librarySkeleton() {
     item(key = "skeleton:library:shelf") { ShelfSkeleton() }

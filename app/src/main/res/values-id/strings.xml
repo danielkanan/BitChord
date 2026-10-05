@@ -229,6 +229,7 @@
     <string name="medium">Sedang</string>
     <string name="high">Tinggi</string>
     <string name="standard">Standar</string>
+    <string name="mixing">Mixing</string>
     <string name="lossless">Lossless</string>
     <string name="system">Sistem</string>
     <string name="light">Terang</string>
@@ -389,6 +390,9 @@
     <string name="your_playlists">Playlist Anda</string>
     <string name="who_can_see_it">Siapa yang dapat melihatnya</string>
     <string name="about_artist">Tentang artis</string>
+    <string name="recent_album">Album Terbaru</string>
+    <string name="recent_single">Single Terbaru</string>
+    <string name="recent_ep">EP Terbaru</string>
     <string name="about_album">Tentang album</string>
     <string name="nothing_matches">Tidak ada yang cocok dengan “%1$s”</string>
     <string name="close_search">Tutup pencarian</string>
@@ -914,6 +918,7 @@
     <string name="prefer_usb_dac">Pilih DAC USB</string>
     <string name="loudness_normalization">Normalisasi kenyaringan</string>
     <string name="loudness_normalization_subtitle">Menyamakan kenyaringan setiap lagu</string>
+    <string name="loudness_off_on_speaker">Nonaktifkan di speaker ponsel</string>
     <string name="loudness_target">Target kenyaringan</string>
     <string name="loudness_target_subtitle">Lebih pelan cocok untuk headphone; lebih keras cocok untuk mobil atau speaker ponsel</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1283,4 +1288,19 @@
 
 
 
+    <string name="lyrics_share_title">Bagikan lirik</string>
+    <string name="lyrics_share_description">Baris yang kamu pilih, ditata pada kartu bersama sampul.</string>
+    <string name="lyrics_share_story">Jadikan story</string>
+    <string name="lyrics_share_story_revert">Kembali ke kartu</string>
+    <string name="lyrics_share_pick_limit">Kartu sudah penuh</string>
+    <string name="saved_bang">Tersimpan!</string>
+    <string name="share_your_lyrics">Kirim kartu lirikmu</string>
+    <string name="your_lyrics_card">Kartu lirikmu</string>
+    <string name="source_needs_lossless_bt_unknown">Perlu output lossless · codec Bluetooth yang dipakai tidak bisa diketahui</string>
+    <string name="lossless_output_permission">Periksa codec Bluetooth</string>
+    <string name="lossless_output_permission_detail">Izinkan Perangkat di sekitar agar headphone LDAC atau LHDC bisa membuka addon lossless</string>
+    <string name="lossless_output_permission_denied">Izin perangkat terdekat nonaktif</string>
+    <string name="lossless_output_permission_denied_detail">Ketuk untuk membuka Pengaturan dan mengizinkan perangkat terdekat — tanpa itu codec Bluetooth Anda tidak bisa dibaca</string>
+    <string name="source_needs_lossless_output">Perlu output lossless · gunakan perangkat yang mendukung lossless</string>
+    <string name="source_needs_lossless_bt_codec">Perlu output lossless · Bluetooth memakai %1$s; gunakan perangkat yang mendukung lossless</string>
 </resources>

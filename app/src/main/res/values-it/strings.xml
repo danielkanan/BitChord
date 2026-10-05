@@ -274,6 +274,7 @@
     <string name="medium">Media</string>
     <string name="high">Alta</string>
     <string name="standard">Standard</string>
+    <string name="mixing">Mixaggio</string>
     <string name="lossless">Lossless</string>
     <string name="system">Sistema</string>
     <string name="light">Chiaro</string>
@@ -442,6 +443,9 @@
     <string name="your_playlists">Le tue playlist</string>
     <string name="who_can_see_it">Chi può vederlo</string>
     <string name="about_artist">Informazioni sull\'artista</string>
+    <string name="recent_album">Album recente</string>
+    <string name="recent_single">Singolo recente</string>
+    <string name="recent_ep">EP recente</string>
     <string name="about_album">Informazioni sull\'album</string>
     <string name="nothing_matches">Niente corrisponde a “%1$s”</string>
     <string name="close_search">Chiudi ricerca</string>
@@ -936,6 +940,7 @@
     <string name="prefer_usb_dac">Preferisci DAC USB</string>
     <string name="loudness_normalization">Normalizzazione del volume</string>
     <string name="loudness_normalization_subtitle">Porta ogni brano alla stessa intensità sonora</string>
+    <string name="loudness_off_on_speaker">Disattiva sull\'altoparlante del telefono</string>
     <string name="loudness_target">Intensità di destinazione</string>
     <string name="loudness_target_subtitle">Più bassa per le cuffie; più alta per l\'auto o l\'altoparlante del telefono</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1245,4 +1250,19 @@
 
 
 
+    <string name="lyrics_share_title">Condividi il testo</string>
+    <string name="lyrics_share_description">I versi che hai scelto, impaginati su una scheda con la copertina.</string>
+    <string name="lyrics_share_story">Trasforma in storia</string>
+    <string name="lyrics_share_story_revert">Torna alla scheda</string>
+    <string name="lyrics_share_pick_limit">La scheda è piena</string>
+    <string name="saved_bang">Salvato!</string>
+    <string name="share_your_lyrics">Invia la tua scheda di testo</string>
+    <string name="your_lyrics_card">La tua scheda di testo</string>
+    <string name="source_needs_lossless_bt_unknown">Richiede un’uscita lossless · impossibile sapere quale codec Bluetooth è in uso</string>
+    <string name="lossless_output_permission">Controlla codec Bluetooth</string>
+    <string name="lossless_output_permission_detail">Consenti Dispositivi nelle vicinanze perché le cuffie LDAC o LHDC sblocchino i componenti lossless</string>
+    <string name="lossless_output_permission_denied">L’autorizzazione Dispositivi nelle vicinanze è spenta</string>
+    <string name="lossless_output_permission_denied_detail">Tocca per aprire Impostazioni e consentire Dispositivi nelle vicinanze — senza, non possiamo leggere il tuo codec Bluetooth</string>
+    <string name="source_needs_lossless_output">Richiede un’uscita lossless · usa un dispositivo compatibile con il lossless</string>
+    <string name="source_needs_lossless_bt_codec">Richiede un’uscita lossless · il Bluetooth usa %1$s; usa un dispositivo compatibile con il lossless</string>
 </resources>

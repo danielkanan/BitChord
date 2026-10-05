@@ -235,6 +235,7 @@
     <string name="medium">Moyenne</string>
     <string name="high">Élevée</string>
     <string name="standard">Standard</string>
+    <string name="mixing">Mixage</string>
     <string name="lossless">Sans perte</string>
     <string name="system">Système</string>
     <string name="light">Clair</string>
@@ -400,6 +401,9 @@
     <string name="your_playlists">Vos playlists</string>
     <string name="who_can_see_it">Qui peut la voir</string>
     <string name="about_artist">À propos de l\'artiste</string>
+    <string name="recent_album">Album récent</string>
+    <string name="recent_single">Single récent</string>
+    <string name="recent_ep">EP récent</string>
     <string name="about_album">À propos de l\'album</string>
     <string name="nothing_matches">Rien ne correspond à “%1$s”</string>
     <string name="close_search">Fermer la recherche</string>
@@ -935,6 +939,7 @@
     <string name="prefer_usb_dac">Préférer le DAC USB</string>
     <string name="loudness_normalization">Normalisation du volume</string>
     <string name="loudness_normalization_subtitle">Ramène chaque titre à la même intensité sonore</string>
+    <string name="loudness_off_on_speaker">Desactiver sur le haut-parleur du telephone</string>
     <string name="loudness_target">Intensité cible</string>
     <string name="loudness_target_subtitle">Plus bas pour un casque ; plus fort pour la voiture ou le haut-parleur du téléphone</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1304,4 +1309,19 @@
 
 
 
+    <string name="lyrics_share_title">Partager les paroles</string>
+    <string name="lyrics_share_description">Les lignes que vous avez choisies, mises en page sur une carte avec la pochette.</string>
+    <string name="lyrics_share_story">Convertir en story</string>
+    <string name="lyrics_share_story_revert">Revenir à la carte</string>
+    <string name="lyrics_share_pick_limit">La carte est pleine</string>
+    <string name="saved_bang">Enregistré !</string>
+    <string name="share_your_lyrics">Envoyer votre carte de paroles</string>
+    <string name="your_lyrics_card">Votre carte de paroles</string>
+    <string name="source_needs_lossless_bt_unknown">Nécessite une sortie sans perte · impossible de savoir quel codec Bluetooth est utilisé</string>
+    <string name="lossless_output_permission">Vérifier le codec Bluetooth</string>
+    <string name="lossless_output_permission_detail">Autorisez Appareils à proximité pour qu’un casque LDAC ou LHDC débloque les modules sans perte</string>
+    <string name="lossless_output_permission_denied">L’autorisation Appareils à proximité est désactivée</string>
+    <string name="lossless_output_permission_denied_detail">Touchez pour ouvrir les paramètres et autoriser Appareils à proximité — sans elle, votre codec Bluetooth ne peut pas être lu</string>
+    <string name="source_needs_lossless_output">Nécessite une sortie sans perte · utilisez un appareil compatible sans perte</string>
+    <string name="source_needs_lossless_bt_codec">Nécessite une sortie sans perte · le Bluetooth utilise %1$s ; utilisez un appareil compatible sans perte</string>
 </resources>

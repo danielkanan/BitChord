@@ -91,7 +91,6 @@ internal fun AndroidLyricsShareSheet(
         title = stringResource(R.string.lyrics_share_title),
         onDismiss = onDismiss,
         modifier = modifier,
-        titleGap = 2.dp,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),

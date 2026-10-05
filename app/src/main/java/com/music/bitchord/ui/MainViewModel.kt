@@ -35,6 +35,8 @@ import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.MoodGenre
 import com.music.bitchord.data.model.MoodGenreSection
 import com.music.bitchord.data.model.PlaylistPrivacy
+import com.music.bitchord.data.model.SPOTIFY_MISSING_PREFIX
+import com.music.bitchord.data.model.SPOTIFY_PENDING_PREFIX
 import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.SearchResult
 import com.music.bitchord.data.model.ShelfItem
@@ -46,6 +48,11 @@ import com.music.bitchord.data.model.UserPlaylist
 import com.music.bitchord.data.model.SearchHistoryEntity
 import com.music.bitchord.data.model.EntityType
 import com.music.bitchord.data.settings.SearchHistory
+import com.music.bitchord.data.spotify.LocalPlaylistStore
+import com.music.bitchord.data.spotify.SPOTIFY_PAGE_PREFIX
+import com.music.bitchord.data.spotify.SpotifyImporter
+import com.music.bitchord.data.spotify.SpotifyLibrary
+import com.music.bitchord.data.spotify.SpotifyTrack
 import com.music.bitchord.download.Downloads
 import android.util.LruCache
 import kotlinx.coroutines.FlowPreview
@@ -74,7 +81,9 @@ import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceResolver
 import com.music.bitchord.data.sources.TrackMatcher
+import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.StreamChoice
+import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -875,27 +884,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun addToPlaylist(playlist: UserPlaylist, song: Song, onResult: (alreadyInPlaylist: Boolean) -> Unit = {}) {
         if (!requireSignIn()) return
         viewModelScope.launch {
-            val openSongs = (_detailStack.value.firstOrNull { it.browseId == playlist.browseId }
-                ?.songs as? UiState.Success)?.data
-            val known = openSongs
-                ?: YtMusicRepository.allSongs(playlist.browseId).getOrNull()
-            if (known?.any { it.videoId == song.videoId } == true) {
-                onResult(true)
-                return@launch
-            }
-            YtMusicRepository.addToPlaylist(playlist.playlistId, listOf(song.videoId)).fold(
-                onSuccess = { added ->
-                    libraryStale = true
-                    // The playlist's page may be open behind the picker — it is
-                    // reachable from a row's own menu on it — so the track goes
-                    // into it for the same reason [addSuggestedSong] does.
-                    appendToOpenPlaylist(playlist.browseId, song, added[song.videoId])
-                    onResult(false)
-                    refreshPlaylistArtwork(playlist.browseId)
-                },
-                onFailure = {},
+            onResult(addOne(playlist, song) == AddOutcome.ALREADY_THERE)
+        }
+    }
+
+    /**
+     * Adds [song] to every playlist in [playlists] that does not already hold
+     * it. One notice covers the batch: a track that is already in one of them
+     * is skipped there and still added to the rest.
+     */
+    fun addToPlaylists(
+        playlists: List<UserPlaylist>,
+        song: Song,
+        onResult: (added: Int, alreadyThere: Int, failed: Int) -> Unit = { _, _, _ -> },
+    ) {
+        if (!requireSignIn() || playlists.isEmpty()) return
+        viewModelScope.launch {
+            val outcomes = playlists.map { addOne(it, song) }
+            onResult(
+                outcomes.count { it == AddOutcome.ADDED },
+                outcomes.count { it == AddOutcome.ALREADY_THERE },
+                outcomes.count { it == AddOutcome.FAILED },
             )
         }
+    }
+
+    private enum class AddOutcome { ADDED, ALREADY_THERE, FAILED }
+
+    private suspend fun addOne(playlist: UserPlaylist, song: Song): AddOutcome {
+        val openSongs = (_detailStack.value.firstOrNull { it.browseId == playlist.browseId }
+            ?.songs as? UiState.Success)?.data
+        val known = openSongs
+            ?: YtMusicRepository.allSongs(playlist.browseId).getOrNull()
+        if (known?.any { it.videoId == song.videoId } == true) return AddOutcome.ALREADY_THERE
+        return YtMusicRepository.addToPlaylist(playlist.playlistId, listOf(song.videoId)).fold(
+            onSuccess = { added ->
+                libraryStale = true
+                // The playlist's page may be open behind the picker — it is
+                // reachable from a row's own menu on it — so the track goes
+                // into it for the same reason [addSuggestedSong] does.
+                appendToOpenPlaylist(playlist.browseId, song, added[song.videoId])
+                refreshPlaylistArtwork(playlist.browseId)
+                AddOutcome.ADDED
+            },
+            onFailure = { AddOutcome.FAILED },
+        )
     }
 
     /**
@@ -1001,6 +1034,71 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 },
                 onFailure = {},
             )
+        }
+    }
+
+    /**
+     * Creates a playlist seeded with many video ids — Spotify import and the
+     * like. Falls back to [LocalPlaylistStore] when unsigned-in or when the
+     * YouTube Music create fails.
+     *
+     * [onResult]'s [savedLocally] is true when the playlist went to this device,
+     * not YouTube Music.
+     */
+    fun createPlaylistWithVideoIds(
+        title: String,
+        privacy: PlaylistPrivacy,
+        videoIds: List<String>,
+        songs: List<Song> = emptyList(),
+        onResult: ((browseId: String?, title: String, savedLocally: Boolean) -> Unit)? = null,
+    ) {
+        val name = title.trim().ifBlank { text(R.string.new_playlist) }
+        viewModelScope.launch {
+            if (authStore.isSignedIn) {
+                val initialBatch = videoIds.take(50)
+                YtMusicRepository.createPlaylist(
+                    title = name,
+                    privacy = privacy,
+                    videoIds = initialBatch,
+                ).fold(
+                    onSuccess = { playlistId ->
+                        if (videoIds.size > 50) {
+                            videoIds.drop(50).chunked(50).forEach { chunk ->
+                                YtMusicRepository.addToPlaylist(playlistId, chunk)
+                            }
+                        }
+                        setPlaylistOwned("VL$playlistId", true)
+                        libraryStale = true
+                        val created = UserPlaylist(
+                            playlistId = playlistId,
+                            title = name,
+                            subtitle = "${videoIds.size} songs",
+                            thumbnailUrl = null,
+                        )
+                        _playlists.value = listOf(created) +
+                            _playlists.value.filterNot { it.playlistId == created.playlistId }
+                        editPlaylistShelf { items ->
+                            listOf(
+                                ShelfItem(
+                                    title = created.title,
+                                    subtitle = created.subtitle,
+                                    thumbnailUrl = created.thumbnailUrl,
+                                    videoId = null,
+                                    browseId = created.browseId,
+                                ),
+                            ) + items.filterNot { it.browseId == created.browseId }
+                        }
+                        onResult?.invoke(created.browseId, created.title, false)
+                    },
+                    onFailure = {
+                        val local = LocalPlaylistStore.savePlaylist(name, songs)
+                        onResult?.invoke(local.browseId, local.title, true)
+                    },
+                )
+            } else {
+                val local = LocalPlaylistStore.savePlaylist(name, songs)
+                onResult?.invoke(local.browseId, local.title, true)
+            }
         }
     }
 
@@ -1230,6 +1328,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun loadPlaylistEntries(playlist: UserPlaylist, onResult: (Result<List<Song>>) -> Unit) {
+        if (!requireSignIn()) return onResult(Result.failure(IllegalStateException("signed out")))
+        viewModelScope.launch {
+            onResult(YtMusicRepository.playlistEntries(playlist.browseId))
+        }
+    }
+
+    /**
+     * Saves a new running order for [playlist], sent as the fewest moves that
+     * get from [original] to [reordered], and puts the open page — if this
+     * playlist's is — into that order straight away rather than after a
+     * re-fetch the feed may answer with the old order.
+     */
+    fun reorderPlaylist(
+        playlist: UserPlaylist,
+        original: List<Song>,
+        reordered: List<Song>,
+        onResult: (Boolean) -> Unit = {},
+    ) {
+        if (!requireSignIn()) return onResult(false)
+        viewModelScope.launch {
+            YtMusicRepository.reorderPlaylist(
+                playlist.playlistId,
+                current = original.mapNotNull { it.setVideoId },
+                target = reordered.mapNotNull { it.setVideoId },
+            ).fold(
+                onSuccess = {
+                    libraryStale = true
+                    _detailStack.value = _detailStack.value.map { page ->
+                        if (page.browseId != playlist.browseId || page.songs !is UiState.Success) {
+                            page
+                        } else {
+                            page.copy(songs = UiState.Success(reordered.withArtwork(page.thumbnailUrl)))
+                        }
+                    }
+                    onResult(true)
+                },
+                onFailure = { onResult(false) },
+            )
+        }
+    }
+
     fun deletePlaylist(playlist: UserPlaylist) {
         if (!requireSignIn()) return
         viewModelScope.launch {
@@ -1370,6 +1510,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             AppSettings.filterNonMusicAudio.drop(1).collect {
                 if (_detailStack.value.any { page -> page.browseId == "local:all" }) {
                     reloadLocalDetail("local:all")
+                }
+            }
+        }
+        viewModelScope.launch {
+            // Emptied from Settings while the folder sits open underneath.
+            AudioCache.contentsChanged.drop(1).collect {
+                if (_detailStack.value.any { page -> page.browseId == CACHE_FOLDER_BROWSE_ID }) {
+                    reloadLocalDetail(CACHE_FOLDER_BROWSE_ID)
                 }
             }
         }
@@ -2236,7 +2384,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * Maximum number of live media results shown in the typeahead dropdown.
          * Enough to give variety without making the list unscrollable.
          */
-        const val TYPEAHEAD_MAX_RESULTS = 8
+        const val TYPEAHEAD_MAX_RESULTS = 15
 
         const val SEARCH_CACHE_ENTRIES = 100
 
@@ -2274,8 +2422,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * opening it.
          */
 
+        /** How many Spotify tracks are looked up on YouTube Music at once. */
+        private const val SPOTIFY_MATCH_PARALLELISM = 6
+
         fun browseTypeOf(browseId: String, fallback: BrowseType = BrowseType.OTHER): BrowseType = when {
             browseId.startsWith(Downloads.PLAYLIST_PREFIX) -> BrowseType.PLAYLIST
+            browseId.startsWith(SPOTIFY_PAGE_PREFIX) || browseId.startsWith("local:playlist:") -> BrowseType.PLAYLIST
             browseId.startsWith("UC") -> BrowseType.ARTIST
             browseId.startsWith("MPREb") || browseId.startsWith("VLOLAK") || browseId.startsWith("OLAK") -> BrowseType.ALBUM
             browseId.startsWith("VL") || browseId.startsWith("PL") -> BrowseType.PLAYLIST
@@ -2337,6 +2489,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.browseId == browseId && it.songs is UiState.Loading
             } == true
         ) return
+        if (browseId.startsWith(SPOTIFY_PAGE_PREFIX)) {
+            openSpotifyPage(browseId, title, subtitle, thumbnailUrl)
+            return
+        }
         val resolved = browseTypeOf(browseId, type)
         _detailStack.value += DetailPage(
             browseId = browseId,
@@ -2375,8 +2531,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var monthlyListenerCount: String? = null
             /** Whether this artist is subscribed to — see [DetailPage.subscription]. */
             var subscription: SubscriptionState? = null
+            val localPlaylist = LocalPlaylistStore.getPlaylist(browseId)
             val remote = remoteLibrary(browseId)
             val state = when {
+                localPlaylist != null -> {
+                    name = localPlaylist.title
+                    credit = getApplication<Application>().getString(
+                        R.string.local_playlist_subtitle,
+                        localPlaylist.songs.size,
+                    )
+                    artwork = localPlaylist.songs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl
+                    if (localPlaylist.songs.isEmpty()) UiState.Error(text(R.string.spotify_import_empty_playlist))
+                    else UiState.Success(localPlaylist.songs)
+                }
                 remote != null -> remoteSongsState(remote)
                 Downloads.recordIdOf(browseId) != null -> {
                     val songs = downloadedPlaylist(browseId)
@@ -2389,6 +2556,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     if (songs.isEmpty()) UiState.Error("No downloaded tracks")
                     else UiState.Success(songs)
                 }
+                browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
                 browseId == "local:all" -> {
                     val context = getApplication<Application>()
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
@@ -2490,11 +2658,96 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * A Spotify playlist opened as an ordinary playlist page.
+     *
+     * Spotify's rows go up as soon as they are read, each marked as still
+     * waiting on its YouTube Music version; the matches then arrive in order
+     * and swap the rows in place, so the page is usable before the last song
+     * has been found.
+     */
+    private fun openSpotifyPage(browseId: String, title: String, subtitle: String, thumbnailUrl: String?) {
+        _detailStack.value += DetailPage(
+            browseId = browseId,
+            title = title,
+            subtitle = subtitle,
+            thumbnailUrl = thumbnailUrl,
+            songs = UiState.Loading,
+            type = BrowseType.PLAYLIST,
+        )
+        viewModelScope.launch {
+            val playlistId = browseId.removePrefix(SPOTIFY_PAGE_PREFIX)
+            fun open() = _detailStack.value.any { it.browseId == browseId }
+            fun setSongs(songs: UiState<List<Song>>) {
+                _detailStack.value = _detailStack.value.map {
+                    if (it.browseId == browseId) it.copy(songs = songs) else it
+                }
+            }
+            // The list only had a thumbnail; the full-size cover replaces it
+            // once this page has asked for it.
+            launch {
+                val cover = runCatching { SpotifyLibrary.cover(playlistId) }.getOrNull() ?: return@launch
+                _detailStack.value = _detailStack.value.map {
+                    if (it.browseId == browseId) it.copy(thumbnailUrl = cover) else it
+                }
+            }
+            val tracks = runCatching {
+                SpotifyLibrary.tracks(playlistId) { soFar ->
+                    setSongs(UiState.Success(soFar.map { it.asPendingSong() }))
+                }
+            }.getOrElse {
+                setSongs(UiState.Error(it.message ?: text(R.string.failed)))
+                return@launch
+            }
+            if (tracks.isEmpty()) {
+                setSongs(UiState.Error(text(R.string.spotify_empty_tracks)))
+                return@launch
+            }
+            val gate = Semaphore(SPOTIFY_MATCH_PARALLELISM)
+            coroutineScope {
+                tracks.forEachIndexed { index, track ->
+                    launch {
+                        gate.withPermit {
+                            if (!open()) return@withPermit
+                            val match = runCatching { SpotifyImporter.matchTrack(track) }.getOrNull()
+                            val found = match?.copy(thumbnailUrl = match.thumbnailUrl ?: track.imageUrl)
+                                ?: track.asPendingSong().let {
+                                    it.copy(videoId = SPOTIFY_MISSING_PREFIX + track.id)
+                                }
+                            _detailStack.value = _detailStack.value.map { page ->
+                                val list = (page.songs as? UiState.Success<List<Song>>)?.data
+                                if (page.browseId == browseId && list != null && index < list.size) {
+                                    page.copy(songs = UiState.Success(list.toMutableList().also { it[index] = found }))
+                                } else page
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun SpotifyTrack.asPendingSong() = Song(
+        videoId = SPOTIFY_PENDING_PREFIX + id,
+        title = title,
+        artist = artist,
+        thumbnailUrl = imageUrl,
+        durationText = durationMs.takeIf { it > 0 }?.let { ms ->
+            "%d:%02d".format(ms / 60000, ms / 1000 % 60)
+        },
+        albumName = album,
+    )
+
     fun reloadLocalDetail(browseId: String) {
         viewModelScope.launch {
             val context = getApplication<Application>()
+            val localPlaylist = LocalPlaylistStore.getPlaylist(browseId)
             val remote = remoteLibrary(browseId)
             val state: UiState<List<Song>> = when {
+                localPlaylist != null -> {
+                    if (localPlaylist.songs.isEmpty()) UiState.Error(text(R.string.spotify_import_empty_playlist))
+                    else UiState.Success(localPlaylist.songs)
+                }
                 remote != null -> remoteSongsState(remote)
                 Downloads.recordIdOf(browseId) != null -> {
                     val songs = downloadedPlaylist(browseId)
@@ -2506,6 +2759,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     if (songs.isEmpty()) UiState.Error("No downloaded tracks")
                     else UiState.Success(songs)
                 }
+                browseId == CACHE_FOLDER_BROWSE_ID -> cachedSongsState()
                 browseId == "local:all" -> {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {
                         UiState.Error(text(R.string.storage_required_read))
@@ -2523,6 +2777,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else it
             }
         }
+    }
+
+    /**
+     * The Cached songs folder: the YouTube and JioSaavn tracks the song cache
+     * is holding, most recently played first. See [AudioCache.cachedSongs].
+     */
+    private suspend fun cachedSongsState(): UiState<List<Song>> {
+        val songs = AudioCache.cachedSongs().map { it.song }
+        return if (songs.isEmpty()) UiState.Error(text(R.string.cached_songs_empty)) else UiState.Success(songs)
     }
 
     /**
@@ -2654,6 +2917,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 browseId == "local:downloads" -> runCatching {
                     Downloads.getDownloadedSongs(context)
                         .ifEmpty { error("No downloaded tracks") }
+                }
+                browseId == CACHE_FOLDER_BROWSE_ID -> runCatching {
+                    AudioCache.cachedSongs().map { it.song }
+                        .ifEmpty { error(text(R.string.cached_songs_empty)) }
                 }
                 browseId == "local:all" -> runCatching {
                     if (!LocalMediaRepository.hasStoragePermission(context)) {

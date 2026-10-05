@@ -465,6 +465,18 @@ object Downloads {
     }
 
     /**
+     * Playlists and albums downloaded whole, in name order — the On Device shelf
+     * on Library. Broader than [savedPlaylists]: albums belong here too once
+     * kept offline as a release.
+     */
+    fun savedReleases(onDisk: Map<String, String> = _saved.value): List<SavedCollection> {
+        if (_collections.value.isEmpty()) return emptyList()
+        return _collections.value.values
+            .filter { record -> record.videoIds.any { it in onDisk } }
+            .sortedBy { it.title.lowercase(Locale.ROOT) }
+    }
+
+    /**
      * The releases at least one of [songs] belongs to, each with its own tracks
      * picked out of that list.
      *

@@ -229,6 +229,7 @@
     <string name="medium">中</string>
     <string name="high">高</string>
     <string name="standard">標準</string>
+    <string name="mixing">ミキシング</string>
     <string name="lossless">ロスレス</string>
     <string name="system">システム</string>
     <string name="light">ライト</string>
@@ -389,6 +390,9 @@
     <string name="your_playlists">あなたのプレイリスト</string>
     <string name="who_can_see_it">公開範囲</string>
     <string name="about_artist">アーティストについて</string>
+    <string name="recent_album">最近のアルバム</string>
+    <string name="recent_single">最近のシングル</string>
+    <string name="recent_ep">最近の EP</string>
     <string name="about_album">アルバムについて</string>
     <string name="nothing_matches">「%1$s」に一致するものはありません</string>
     <string name="close_search">検索を閉じる</string>
@@ -854,6 +858,7 @@
     <string name="prefer_usb_dac">USB DAC を優先</string>
     <string name="loudness_normalization">音量の正規化</string>
     <string name="loudness_normalization_subtitle">すべての曲を同じラウドネスにそろえます</string>
+    <string name="loudness_off_on_speaker">バイトフォンで無効化</string>
     <string name="loudness_target">目標ラウドネス</string>
     <string name="loudness_target_subtitle">小さめはヘッドホン向け、大きめは車やスマホのスピーカー向けです</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1284,4 +1289,19 @@
 
 
 
+    <string name="lyrics_share_title">歌詞を共有</string>
+    <string name="lyrics_share_description">選んだ行を、ジャケットと一緒にカードにレイアウトします。</string>
+    <string name="lyrics_share_story">ストーリー用にする</string>
+    <string name="lyrics_share_story_revert">カードに戻す</string>
+    <string name="lyrics_share_pick_limit">カードがいっぱいです</string>
+    <string name="saved_bang">保存しました！</string>
+    <string name="share_your_lyrics">歌詞カードを送る</string>
+    <string name="your_lyrics_card">歌詞カード</string>
+    <string name="source_needs_lossless_bt_unknown">ロスレス出力が必要 · 使用中のBluetoothコーデックを判別できません</string>
+    <string name="lossless_output_permission">Bluetoothコーデックを確認</string>
+    <string name="lossless_output_permission_detail">付近のデバイスを許可すると、LDACまたはLHDCのヘッドホンでロスレス専用アドオンを使えます</string>
+    <string name="lossless_output_permission_denied">近くのデバイスの権限がオフです</string>
+    <string name="lossless_output_permission_denied_detail">タップして設定を開き、「近くのデバイス」を許可してください — 許可しないと Bluetooth コーデックを読み取れません</string>
+    <string name="source_needs_lossless_output">ロスレス出力が必要 · ロスレス対応のデバイスを使用してください</string>
+    <string name="source_needs_lossless_bt_codec">ロスレス出力が必要 · Bluetoothは%1$sです。ロスレス対応のデバイスを使用してください</string>
 </resources>

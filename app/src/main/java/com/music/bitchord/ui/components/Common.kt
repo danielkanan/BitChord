@@ -82,8 +82,12 @@ import com.music.bitchord.R
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.model.isMatchMissing
+import com.music.bitchord.data.model.isMatchPending
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.border
 
@@ -561,11 +565,19 @@ private fun SongRowContent(
     // full 52dp artwork slot and looked oddly airy — shrink that cell and the
     // vertical pad so the change is visible.
     val titleOnlyNumbered = trackNumber != null && subtitle.isBlank()
+    // A Spotify track still being matched to a YouTube Music song, or one that
+    // has no match: shown, but not something a tap or a menu can act on.
+    val matching = song.isMatchPending
+    val unavailable = song.isMatchMissing
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .alpha(if (unavailable) 0.45f else 1f)
             .background(activeBackground)
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .combinedClickable(
+                onClick = { if (!matching && !unavailable) onClick() },
+                onLongClick = if (matching || unavailable) null else onLongPress,
+            )
             .padding(
                 horizontal = PAGE_GUTTER,
                 vertical = if (titleOnlyNumbered) 2.dp else 4.dp,
@@ -638,7 +650,14 @@ private fun SongRowContent(
             Spacer(Modifier.width(8.dp))
             PlayingEqBars(color = subtitleColor)
         }
-        if (showDuration) {
+        if (matching) {
+            Spacer(Modifier.width(8.dp))
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = subtitleColor,
+            )
+        } else if (showDuration) {
             song.durationText?.let {
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -649,7 +668,7 @@ private fun SongRowContent(
             }
         }
         // Same sheet the long-press opens, for anyone who doesn't think to hold.
-        if (onMore != null) {
+        if (onMore != null && !matching && !unavailable) {
             Box(
                 modifier = Modifier
                     .size(36.dp)

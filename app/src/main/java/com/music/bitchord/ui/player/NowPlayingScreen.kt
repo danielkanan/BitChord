@@ -137,6 +137,7 @@ import com.music.bitchord.ui.LyricsProviderState
 import com.music.bitchord.ui.components.optimizedHazeEffect
 import com.music.bitchord.ui.components.rememberRemoteArtworkUrl
 import com.music.bitchord.ui.components.AudioPipelineDialog
+import com.music.bitchord.ui.components.CastDialog
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import com.music.bitchord.ui.icons.BitChordIcons
@@ -630,6 +631,7 @@ fun NowPlayingScreen(
     val playerHaze = remember { HazeState() }
     var showAudioPipeline by remember { mutableStateOf(false) }
     var showAudioOutput by remember { mutableStateOf(false) }
+    var showCast by remember { mutableStateOf(false) }
     var showLyricsProviders by remember { mutableStateOf(false) }
     // Gated on the Bluetooth permission the first time — see [rememberOutputPicker].
     val openAudioOutput = rememberOutputPicker { showAudioOutput = true }
@@ -659,6 +661,7 @@ fun NowPlayingScreen(
     // CanvasRepository, which is also where the "is this actually the right
     // track" check lives.
     val spotifyCanvasAutoHide by AppSettings.spotifyCanvasAutoHide.collectAsStateWithLifecycle()
+    val mixing by AppSettings.smartMixInProgress.collectAsStateWithLifecycle()
     val canvas = rememberCanvasArtwork(song)
     var canvasAspect by remember(canvas) { mutableFloatStateOf(0f) }
     // Whether the clip actually has a frame on screen right now, and one of
@@ -813,6 +816,16 @@ fun NowPlayingScreen(
         loadingText = lyricsLoadingText,
         haptics = haptics,
     )
+    // The drawer holding the finished card, set the moment Share is confirmed.
+    var lyricsShare by remember { mutableStateOf<LyricsShareRequest?>(null) }
+    val lyricPicker = rememberLyricsPicker(
+        song = song,
+        lines = lyrics,
+        subLines = lyricsTranslation.subLines,
+        artworkUrl = remoteArt,
+        haptics = haptics,
+        onCard = { lyricsShare = it },
+    )
     // Nothing here resets [lyricsOpen] on a track change, deliberately. The
     // panel is a place, not a property of the track: someone reading along who
     // skips — or who simply lets the queue run on — means to carry on reading,
@@ -867,6 +880,8 @@ fun NowPlayingScreen(
     // under it.
     PlayerBackHandler(enabled = showAudioOutput) { showAudioOutput = false }
 
+    PlayerBackHandler(enabled = showCast) { showCast = false }
+
     PlayerBackHandler(enabled = showLyricsProviders) { showLyricsProviders = false }
 
     PlayerBackHandler(enabled = showListenTogetherMembers) { showListenTogetherMembers = false }
@@ -874,6 +889,17 @@ fun NowPlayingScreen(
     PlayerBackHandler(enabled = showAudioPipeline) { showAudioPipeline = false }
 
     PlayerBackHandler(enabled = lyricsOffsetOpen, onBack = onDismissLyricsOffset)
+
+    // Both of these sit ahead of [lyricsOpen]'s own handler — see the note on
+    // the queue above — because both are drawn *over* the panel rather than
+    // instead of it: back should take away whichever of them is up and leave the
+    // lyrics underneath exactly where the reader left them.
+    PlayerBackHandler(enabled = lyricsShare != null) { lyricsShare = null }
+
+    // Backing out of a pick drops the pick, not the panel: somebody who changed
+    // their mind lands on the same verses they started from rather than having
+    // to open the whole panel again.
+    PlayerBackHandler(enabled = lyricPicker.picking) { lyricPicker.cancel() }
 
     // 0 = full sleeve, 1 = queue. Everything that moves reads off this.
     //
@@ -1252,8 +1278,8 @@ fun NowPlayingScreen(
     // screen, the landscape one on the sleeve alone — the right column there is
     // full of horizontal sliders and a lyric list that should not be one stray
     // sideways drag away from changing the song.
-    val skipSwipeGesture = Modifier.pointerInput(showAudioPipeline, panelScrolling, controlsLocked) {
-        if (showAudioPipeline || panelScrolling) return@pointerInput
+    val skipSwipeGesture = Modifier.pointerInput(showAudioPipeline, showCast, panelScrolling, controlsLocked) {
+        if (showAudioPipeline || showCast || panelScrolling) return@pointerInput
         var total = 0f
         detectHorizontalDragGestures(
             onDragStart = { total = 0f },
@@ -1343,6 +1369,13 @@ fun NowPlayingScreen(
                 accountName = accountName,
                 onDismiss = { showAudioOutput = false },
                 onOpenPipeline = { showAudioPipeline = true },
+                onOpenCast = { showCast = true },
+            )
+        }
+        if (showCast) {
+            CastDialog(
+                hazeState = playerHaze,
+                onDismiss = { showCast = false },
             )
         }
         if (showLyricsProviders) {
@@ -1375,6 +1408,13 @@ fun NowPlayingScreen(
             LyricsOffsetSheet(
                 hazeState = playerHaze,
                 onDismiss = onDismissLyricsOffset,
+            )
+        }
+        lyricsShare?.let { request ->
+            AndroidLyricsShareSheet(
+                hazeState = playerHaze,
+                request = request,
+                onDismiss = { lyricsShare = null },
             )
         }
     }
@@ -1521,6 +1561,7 @@ fun NowPlayingScreen(
                                 shown = shown,
                                 durationMs = durationMs,
                                 loading = versionAligning || audioVersionSwitching,
+                                mixing = mixing && !scrub.scrubbing,
                                 transitionWindow = transitionWindow
                                     ?.takeIf { !scrub.scrubbing && it.end > it.start }
                                     ?.let { it.start..it.end },
@@ -1571,7 +1612,16 @@ fun NowPlayingScreen(
                             lyricsLoadingText
                         },
                         status = lyricsTranslation.status,
-                        onChangeProvider = { showLyricsProviders = true },
+                        onStatusClick = { showLyricsProviders = true },
+                        picking = lyricPicker.picking,
+                        pickBar = {
+                            LyricsPickBar(
+                                shareEnabled = lyricPicker.picks.isNotEmpty() &&
+                                    !lyricPicker.overBudget,
+                                onCancel = lyricPicker.cancel,
+                                onShare = lyricPicker.share,
+                            )
+                        },
                         romanizationToggle = {
                             RomanizationToggleButton(
                                 state = lyricsTranslation.romanizationState,
@@ -1613,6 +1663,11 @@ fun NowPlayingScreen(
                                     onRevealControls = {},
                                     onHideControls = {},
                                     translationProgress = particleProgress,
+                                    canPick = true,
+                                    picking = lyricPicker.picking,
+                                    picked = lyricPicker.picks,
+                                    onPickLine = lyricPicker.pick,
+                                    onTogglePick = lyricPicker.toggle,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
@@ -1838,7 +1893,8 @@ fun NowPlayingScreen(
         // A subview replaces that hero with an artwork-derived mesh, so it gets
         // only a modest floor rather than an opaque status-bar surface.
         val playerSubviewOpen = lyricsOpen || queueOpen || lyricsOffsetOpen ||
-            showAudioPipeline || showAudioOutput || showLyricsProviders
+            showAudioPipeline || showCast || showAudioOutput || showLyricsProviders ||
+            lyricsShare != null
         val topGradientAlpha = if (playerSubviewOpen) {
             maxOf(artworkStatusScrimAlpha, SUBVIEW_STATUS_SCRIM_MIN_ALPHA)
         } else {
@@ -2065,8 +2121,8 @@ fun NowPlayingScreen(
                     // half second lying across a list the finger was already
                     // scrolling.
                     .onGloballyPositioned { dismissBandSpace = it }
-                    .pointerInput(showAudioPipeline, panelScrolling) {
-                        if (showAudioPipeline || panelScrolling) return@pointerInput
+                    .pointerInput(showAudioPipeline, showCast, panelScrolling) {
+                        if (showAudioPipeline || showCast || panelScrolling) return@pointerInput
                         awaitEachGesture {
                             // Unconsumed on purpose, as the blanket version was:
                             // the collapsed sleeve's own clickable — the way back
@@ -2711,6 +2767,11 @@ fun NowPlayingScreen(
                                     onHideControls = { lyricsControlsOpen = false },
                                     translationProgress = particleProgress,
                                     onScrollingChange = { lyricsScrolling = it },
+                                    canPick = true,
+                                    picking = lyricPicker.picking,
+                                    picked = lyricPicker.picks,
+                                    onPickLine = lyricPicker.pick,
+                                    onTogglePick = lyricPicker.toggle,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
@@ -2734,7 +2795,7 @@ fun NowPlayingScreen(
                         animationSpec = tween(if (translateShown) 220 else 160),
                         label = "translateFade",
                     )
-                    if (translateFade > 0.01f) {
+                    if (translateFade > 0.01f && !lyricPicker.picking) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -2761,6 +2822,19 @@ fun NowPlayingScreen(
                                 onClick = lyricsTranslation.toggleTranslation,
                             )
                         }
+                    }
+                    // The bar arrives and leaves without a transition of its own:
+                    // it is an instruction over the words, and one that has to
+                    // be legible the instant it is on. Anything that animated
+                    // would be over the reader's first pick anyway.
+                    if (lyricPicker.picking) {
+                        LyricsPickBar(
+                            shareEnabled = lyricPicker.picks.isNotEmpty() &&
+                                !lyricPicker.overBudget,
+                            onCancel = lyricPicker.cancel,
+                            onShare = lyricPicker.share,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
                     }
                 }
 
@@ -2823,7 +2897,12 @@ fun NowPlayingScreen(
             // which is what keeps this row of controls in the same place on
             // every screen instead of being shoved off the bottom of a tall one.
             SlidingPlayerDeck(
-                visible = (!lyricsOpen || lyricsControlsOpen) &&
+                // A pick owns the screen: the transport is hidden for as long
+                // as it is on, and a scroll that would reveal it is refused
+                // (see [LyricsPanel]'s bottom-half tap), so nothing brings the
+                // player back under somebody choosing lines.
+                visible = !lyricPicker.picking &&
+                    (!lyricsOpen || lyricsControlsOpen) &&
                     (!queueOpen || queueControlsOpen) &&
                     (!spotifyCanvasPresentation || spotifyCanvasControlsOpen),
                 reveal = playerDeckReveal,
@@ -2887,7 +2966,7 @@ fun NowPlayingScreen(
             if (lyricsOpen) {
                 LyricsStatusWithChange(
                     status = lyricsTranslation.status,
-                    onChange = { showLyricsProviders = true },
+                    onStatusClick = { showLyricsProviders = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .offset(y = 6.dp)
@@ -2899,6 +2978,7 @@ fun NowPlayingScreen(
                 shown = shown,
                 durationMs = durationMs,
                 loading = versionSwitching,
+                mixing = mixing && !scrub.scrubbing,
                 // Hidden while scrubbing: the planner is still describing
                 // where the transition *would* be, and a marker sitting under
                 // a finger that is moving the playhead invites reading it as

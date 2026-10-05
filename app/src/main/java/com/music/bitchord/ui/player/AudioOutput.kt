@@ -30,6 +30,11 @@ import kotlinx.coroutines.flow.map
 /**
  * The outputs this phone can play music through, kept current while on screen.
  *
+ * Cast receivers are listed from [com.music.bitchord.playback.cast.CastController]
+ * via the Cast row in [AudioOutputSheet], which opens [com.music.bitchord.ui.components.CastDialog].
+ * Discover / connect / volume / session lifecycle stay on that controller — do
+ * not invent a second session path from this picker.
+ *
  * Several sources, because no one of them is both early and correct:
  *
  *  - `AudioDeviceCallback` sees everything the framework knows about, but it

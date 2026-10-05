@@ -342,6 +342,7 @@
     <string name="medium">Medium</string>
     <string name="high">High</string>
     <string name="standard">Standard</string>
+    <string name="mixing">Mixing</string>
     <string name="lossless">Lossless</string>
     <string name="system">System</string>
     <string name="light">Light</string>
@@ -547,6 +548,9 @@
     <string name="your_playlists">Your playlists</string>
     <string name="who_can_see_it">Who can see it</string>
     <string name="about_artist">About the artist</string>
+    <string name="recent_album">Recent Album</string>
+    <string name="recent_single">Recent Single</string>
+    <string name="recent_ep">Recent EP</string>
     <string name="about_album">About the album</string>
     <string name="nothing_matches">Nothing here matches “%1$s”</string>
     <string name="close_search">Close search</string>
@@ -659,6 +663,33 @@
     <string name="upgrade_length_slack_footer">A larger tolerance accepts more source matches; a smaller tolerance is stricter. The default is 3 seconds.</string>
     <string name="seconds_short">%1$d s</string>
     <string name="spdc_token">sp_dc token</string>
+    <string name="spotify">Spotify</string>
+    <string name="spotify_connect_subtitle">Sign in to load your playlists. Playback uses YouTube Music.</string>
+    <string name="spotify_sign_in">Sign in with Spotify</string>
+    <string name="spotify_disconnect">Disconnect</string>
+    <string name="spotify_empty_playlists">No playlists on this account</string>
+    <string name="spotify_empty_tracks">This playlist has no tracks</string>
+    <string name="spotify_library_subtitle">Your Spotify playlists</string>
+    <string name="cached_songs">Cached songs</string>
+    <string name="cached_songs_subtitle">Songs from YouTube and JioSaavn in the song cache</string>
+    <string name="cached_songs_empty">No cached songs yet. Songs you play from YouTube or JioSaavn will show up here.</string>
+    <string name="import_spotify">Import Spotify</string>
+    <string name="import_spotify_subtitle">From a playlist link</string>
+    <string name="spotify_import_title">Import Spotify playlist</string>
+    <string name="spotify_import_description">Paste a public playlist link. Songs are matched on YouTube Music.</string>
+    <string name="spotify_import_description_local">Paste a public playlist link. Songs are matched on YouTube Music and saved on this device.</string>
+    <string name="spotify_import_hint">open.spotify.com/playlist/…</string>
+    <string name="spotify_import_invalid">That isn\'t a Spotify playlist link.</string>
+    <string name="spotify_import_fetching">Reading the Spotify playlist…</string>
+    <string name="spotify_import_matching">Matching songs %1$d of %2$d</string>
+    <string name="spotify_import_none">None of those songs were found on YouTube Music.</string>
+    <string name="spotify_import_failed">Couldn\'t import the playlist: %1$s</string>
+    <string name="spotify_import_button">Import</string>
+    <string name="spotify_import_local_fallback">Couldn\'t create it on YouTube Music, so \'%1$s\' was saved on this device instead.</string>
+    <string name="spotify_import_done">Imported \'%1$s\'</string>
+    <string name="spotify_import_unmatched">%1$d songs weren\'t found on YouTube Music</string>
+    <string name="spotify_import_empty_playlist">No songs in this playlist</string>
+    <string name="local_playlist_subtitle">%1$d songs · On this device</string>
     <string name="spotify_canvas_setup">Spotify Canvas setup</string>
     <string name="spotify_canvas_setup_description">To use Spotify Canvas, provide your Spotify sp_dc cookie.</string>
     <string name="spotify_canvas_setup_steps">1. Sign in at open.spotify.com in a browser.\n2. Open Developer Tools, then Application and Cookies.\n3. Copy the value of the sp_dc cookie.\n4. Paste it below.</string>
@@ -1033,6 +1064,8 @@
 
     <string name="loudness_normalization_subtitle">Levels every track to the same loudness</string>
 
+    <string name="loudness_off_on_speaker">Disable on Phone Speaker</string>
+
     <string name="loudness_target">Target loudness</string>
 
     <string name="loudness_target_subtitle">Quieter suits headphones; louder suits a car or a phone speaker</string>
@@ -1147,4 +1180,47 @@
 
     <string name="card_songs_format">%1$s songs</string>
 
+    <string name="cast_dialog_title">Cast</string>
+    <string name="cast_dialog_subtitle">Play on a Chromecast or Google Cast speaker</string>
+    <string name="cast_searching">Looking for devices…</string>
+    <string name="cast_searching_hint">Your phone and the receiver need to be on the same Wi-Fi network.</string>
+    <string name="cast_device_connecting">Connecting…</string>
+    <string name="cast_device_connected">Casting</string>
+    <string name="cast_stop">Stop casting</string>
+    <string name="cast_track_unsupported">This track can\'t be cast</string>
+    <string name="cast_connect_failed">Couldn\'t connect to the receiver</string>
+    <string name="cast">Cast</string>
+    <string name="cast_casting">Casting</string>
+    <string name="cast_connecting">Connecting…</string>
+    <string name="cast_row_subtitle">Chromecast and Google Cast speakers</string>
+
+    <plurals name="add_to_playlists_count">
+        <item quantity="one">Add to %1$d playlist</item>
+        <item quantity="other">Add to %1$d playlists</item>
+    </plurals>
+    <plurals name="added_to_playlists_notice">
+        <item quantity="one">Added to %1$d playlist</item>
+        <item quantity="other">Added to %1$d playlists</item>
+    </plurals>
+
+    <string name="reorder_songs">Reorder songs</string>
+    <string name="reorder_failed">Couldn\'t save the new order</string>
+    <string name="playlist_reordered">Playlist order saved</string>
+    <string name="save_order">Save</string>
+
+    <string name="lyrics_share_title">Share lyrics</string>
+    <string name="lyrics_share_description">The lines you picked, laid out on a card with the cover.</string>
+    <string name="lyrics_share_story">Make it a story</string>
+    <string name="lyrics_share_story_revert">Back to the card</string>
+    <string name="lyrics_share_pick_limit">Card is full</string>
+    <string name="saved_bang">Saved!</string>
+    <string name="share_your_lyrics">Send your lyrics card</string>
+    <string name="your_lyrics_card">Your lyrics card</string>
+    <string name="source_needs_lossless_bt_unknown">Needs a lossless output · can’t tell which Bluetooth codec is in use</string>
+    <string name="lossless_output_permission">Check Bluetooth codec</string>
+    <string name="lossless_output_permission_detail">Allow Nearby devices so LDAC or LHDC headphones can unlock lossless-only addons</string>
+    <string name="lossless_output_permission_denied">Nearby devices permission is off</string>
+    <string name="lossless_output_permission_denied_detail">Tap to open Settings and allow Nearby devices — without it we can’t read your Bluetooth codec</string>
+    <string name="source_needs_lossless_output">Needs a lossless output · use a lossless supported device</string>
+    <string name="source_needs_lossless_bt_codec">Needs a lossless output · Bluetooth is on %1$s; use a lossless supported device</string>
 </resources>

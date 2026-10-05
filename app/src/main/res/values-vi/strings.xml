@@ -262,6 +262,7 @@
     <string name="medium">Trung bình</string>
     <string name="high">Cao</string>
     <string name="standard">Tiêu chuẩn</string>
+    <string name="mixing">Đang mix</string>
     <string name="lossless">Lossless</string>
     <string name="system">Hệ thống</string>
     <string name="light">Sáng</string>
@@ -417,6 +418,9 @@
     <string name="your_playlists">Danh sách phát của bạn</string>
     <string name="who_can_see_it">Ai có thể xem</string>
     <string name="about_artist">Về nghệ sĩ</string>
+    <string name="recent_album">Album gần đây</string>
+    <string name="recent_single">Đơn gần đây</string>
+    <string name="recent_ep">EP gần đây</string>
     <string name="about_album">Về album</string>
     <string name="nothing_matches">Không có nội dung nào khớp với “%1$s”</string>
     <string name="close_search">Đóng tìm kiếm</string>
@@ -754,6 +758,7 @@
     <string name="prefer_usb_dac">Ưu tiên DAC USB</string>
     <string name="loudness_normalization">Chuẩn hóa âm lượng</string>
     <string name="loudness_normalization_subtitle">Cân bằng âm lượng giữa các bài hát</string>
+    <string name="loudness_off_on_speaker">Tắt trên loa điện thoại</string>
     <string name="loudness_target">Âm lượng mục tiêu</string>
     <string name="loudness_target_subtitle">Nhỏ hơn hợp với tai nghe; lớn hơn hợp với ô tô hoặc loa điện thoại</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1226,4 +1231,19 @@
     <string name="prioritize_spotify_canvas">Ưu tiên Spotify Canvas</string>
     <string name="prioritize_spotify_canvas_subtitle">Thử Spotify trước Apple Music và các nhà cung cấp ảnh bìa động khác</string>
 
+    <string name="lyrics_share_title">Chia sẻ lời bài hát</string>
+    <string name="lyrics_share_description">Những dòng bạn chọn, được bố trí trên một thẻ cùng ảnh bìa.</string>
+    <string name="lyrics_share_story">Chuyển thành story</string>
+    <string name="lyrics_share_story_revert">Quay lại thẻ</string>
+    <string name="lyrics_share_pick_limit">Thẻ đã đầy</string>
+    <string name="saved_bang">Đã lưu!</string>
+    <string name="share_your_lyrics">Gửi thẻ lời bài hát</string>
+    <string name="your_lyrics_card">Thẻ lời bài hát của bạn</string>
+    <string name="source_needs_lossless_bt_unknown">Cần đầu ra lossless · không xác định được codec Bluetooth đang dùng</string>
+    <string name="lossless_output_permission">Kiểm tra codec Bluetooth</string>
+    <string name="lossless_output_permission_detail">Cho phép Thiết bị lân cận để tai nghe LDAC hoặc LHDC mở khóa addon lossless</string>
+    <string name="lossless_output_permission_denied">Quyền thiết bị gần đang tắt</string>
+    <string name="lossless_output_permission_denied_detail">Nhấn để mở Cài đặt và cho phép Thiết bị gần — thiếu quyền này chúng tôi không đọc được bộ giải mã Bluetooth của bạn</string>
+    <string name="source_needs_lossless_output">Cần đầu ra lossless · hãy dùng thiết bị hỗ trợ lossless</string>
+    <string name="source_needs_lossless_bt_codec">Cần đầu ra lossless · Bluetooth đang dùng %1$s; hãy dùng thiết bị hỗ trợ lossless</string>
 </resources>

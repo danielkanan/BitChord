@@ -1,5 +1,6 @@
 package com.music.bitchord.ui.screens
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,36 +35,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.bitchord.R
 import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.data.model.HomeShelf
-import com.music.bitchord.R
 import com.music.bitchord.data.model.LibraryPage
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.LibrarySort
-import com.music.bitchord.download.Downloads
-import com.music.bitchord.download.SavedCollection
 import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.ui.components.LIBRARY_GRID_SPACING
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.PullToRefresh
-import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.libraryGrid
 import com.music.bitchord.ui.components.librarySkeleton
 import com.music.bitchord.ui.player.MeshGradientBackground
 import com.music.bitchord.ui.player.rememberArtworkColors
-import com.music.bitchord.ui.replay.ReplayCardRow
 import com.music.bitchord.ui.replay.ReplayHeroCard
-import com.music.bitchord.ui.replay.ReplayStoryPage
 import java.util.Locale
 
 /**
@@ -88,17 +88,18 @@ fun LibraryScreen(
     onShelfItemClick: (ShelfItem) -> Unit,
     onShelfItemLongPress: (ShelfItem) -> Unit,
     onNewPlaylist: () -> Unit,
+    onImportSpotifyPlaylist: (() -> Unit)? = null,
     /**
      * A shelf's "Show all" — every shelf's row here stops at five cards (see
      * [LibraryGridShelf]), so this is the only way to reach whatever didn't
      * fit.
      */
     onShowAll: (HomeShelf) -> Unit,
-    /** Replay's headline cards. Each opens the detailed page at its own chart. */
-    replayCards: List<ReplayHeroCard>,
-    replayHolder: String,
-    replayMemberSince: String?,
-    onOpenReplay: (ReplayStoryPage) -> Unit,
+    /**
+     * The way in to Replay at the head of the page — the row of Replay cards,
+     * their placeholders while the history is read, or the empty-state banner.
+     */
+    replay: @Composable () -> Unit,
     onSignIn: () -> Unit,
     onRetry: () -> Unit,
     refreshing: Boolean,
@@ -107,20 +108,18 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues,
     /**
-     * The playlists downloaded whole, as cards behind the two device folders.
-     *
-     * They belong on that shelf because they are the same promise everything
-     * else on it makes — here, now, without a network. Nothing is truncated:
-     * the shelf is a row that scrolls, so "all of them" costs nothing.
-     *
-     * Downloaded *albums* are deliberately not here. An album stamps its name
-     * onto each of its tracks, so the Downloads folder's Albums tab groups it
-     * back up on its own and a card here would be a second door onto the same
-     * list. A playlist has no tag anything can derive it from — its tracks are
-     * off forty different releases — so this is the only place it can be reached
-     * without going through that folder.
+     * The device's folders — downloads, local files, the remote libraries this
+     * build supports — drawn as a list under the Replay cards. Built by the
+     * app, since which of those exist is the platform's business.
      */
-    downloadedPlaylists: List<SavedCollection> = emptyList(),
+    links: List<LibraryLink>,
+    /**
+     * The "On device" shelf under that list: the releases kept on this device
+     * whole. Left off the page entirely while there are none.
+     */
+    deviceItems: List<ShelfItem>,
+    /** The big "Library" heading; FrostedTopBar already shows the tab title. */
+    showTitle: Boolean = true,
 ) {
     val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
     val onDevice = stringResource(R.string.on_device)
@@ -135,104 +134,43 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
         ) {
-            // Drawn whether or not anything has been played: with nothing behind
-            // it the page still has to say the feature exists, or the only way
-            // to discover it is to have already used it.
-            item(key = "replay") {
-                if (replayCards.isEmpty()) {
-                    // Keep Replay discoverable before there is enough listening
-                    // data to deal the personalised cards.
-                    ReplayBanner(null) { onOpenReplay(ReplayStoryPage.INTRO) }
-                } else {
-                    ReplayCardRow(
-                        cards = replayCards,
-                        holder = replayHolder,
-                        memberSince = replayMemberSince,
-                        onCardClick = onOpenReplay,
-                        modifier = Modifier.padding(vertical = 6.dp),
-                        contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+            if (showTitle) {
+                item {
+                    Text(
+                        text = stringResource(R.string.library),
+                        style = MaterialTheme.typography.displayLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
                     )
                 }
             }
-            item(key = "shelf:$onDevice") {
-                val webdavConfigured by AppSettings.webdavUrl.collectAsStateWithLifecycle()
-                val smbHost by AppSettings.smbHost.collectAsStateWithLifecycle()
-                val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
-                // The remote libraries share one card shape; each entry is
-                // title, subtitle and the page it opens.
-                val remotes = listOf(
-                    Triple(
-                        stringResource(R.string.webdav),
-                        if (webdavConfigured.isBlank()) {
-                            stringResource(R.string.webdav_not_configured)
-                        } else {
-                            stringResource(R.string.webdav_subtitle)
-                        },
-                        com.music.bitchord.data.webdav.WebDavConfig.BROWSE_ID,
-                    ),
-                    Triple(
-                        stringResource(R.string.smb),
-                        if (smbHost.isBlank() || smbShare.isBlank()) {
-                            stringResource(R.string.smb_not_configured)
-                        } else {
-                            stringResource(R.string.smb_subtitle)
-                        },
-                        com.music.bitchord.data.smb.SmbConfig.BROWSE_ID,
-                    ),
-                )
-                val onDeviceShelf = HomeShelf(
-                    title = onDevice,
-                    items = listOf(
-                        ShelfItem(
-                            title = stringResource(R.string.downloads),
-                            subtitle = stringResource(R.string.downloaded_songs),
-                            thumbnailUrl = null,
-                            videoId = null,
-                            browseId = "local:downloads",
-                        ),
-                        ShelfItem(
-                            title = stringResource(R.string.local_music),
-                            subtitle = stringResource(R.string.audio_files_on_device),
-                            thumbnailUrl = null,
-                            videoId = null,
-                            browseId = "local:all",
-                        ),
-                    ) + remotes.map { (title, subtitle, browseId) ->
-                        ShelfItem(
-                            title = title,
-                            subtitle = subtitle,
-                            thumbnailUrl = null,
-                            videoId = null,
-                            browseId = browseId,
-                        )
-                    } + downloadedPlaylists.map { playlist ->
-                        ShelfItem(
-                            title = playlist.title,
-                            // The credit the playlist was downloaded with,
-                            // because this is also what the page it opens
-                            // bills itself by — see `headerLines`, which
-                            // reads the kind and the owner back out of it.
-                            // Saying "Downloaded playlist" here instead would
-                            // make that header read "Downloaded playlist" over
-                            // "PLAYLIST • 12 SONGS", and the shelf this card
-                            // is on already says where it lives.
-                            subtitle = playlist.subtitle.ifBlank {
-                                stringResource(R.string.downloaded_playlist)
-                            },
-                            thumbnailUrl = playlist.thumbnailUrl,
-                            videoId = null,
-                            browseId = Downloads.pageIdFor(playlist.id),
-                        )
-                    },
-                )
-                LibraryGridShelf(
-                    shelf = onDeviceShelf,
-                    onItemClick = onShelfItemClick,
-                    onItemLongPress = onShelfItemLongPress,
-                    onShowAll = { onShowAll(onDeviceShelf) },
-                )
+            item(key = "replay") { replay() }
+            if (links.isNotEmpty()) {
+                item(key = "links") { LibraryLinkList(links = links, onClick = onShelfItemClick) }
+            }
+            if (deviceItems.isNotEmpty()) {
+                item(key = "shelf:$onDevice") {
+                    val onDeviceShelf = HomeShelf(title = onDevice, items = deviceItems)
+                    LibraryGridShelf(
+                        shelf = onDeviceShelf,
+                        onItemClick = onShelfItemClick,
+                        onItemLongPress = onShelfItemLongPress,
+                        onShowAll = { onShowAll(onDeviceShelf) },
+                    )
+                }
             }
             if (!signedIn) {
+                item(key = "shelf:$PLAYLISTS") {
+                    val emptyPlaylists = HomeShelf(PLAYLISTS, emptyList())
+                    PlaylistShelf(
+                        shelf = emptyPlaylists,
+                        onItemClick = onShelfItemClick,
+                        onItemLongPress = onShelfItemLongPress,
+                        onNewPlaylist = onNewPlaylist,
+                        onImportSpotifyPlaylist = onImportSpotifyPlaylist,
+                        onShowAll = { onShowAll(emptyPlaylists) },
+                    )
+                }
                 item {
                     MessageState(
                         message = stringResource(R.string.library_sign_in_description),
@@ -261,6 +199,7 @@ fun LibraryScreen(
                                 onItemClick = onShelfItemClick,
                                 onItemLongPress = onShelfItemLongPress,
                                 onNewPlaylist = onNewPlaylist,
+                                onImportSpotifyPlaylist = onImportSpotifyPlaylist,
                                 onShowAll = { onShowAll(emptyPlaylists) },
                             )
                         }
@@ -274,6 +213,7 @@ fun LibraryScreen(
                                     onItemClick = onShelfItemClick,
                                     onItemLongPress = onShelfItemLongPress,
                                     onNewPlaylist = onNewPlaylist,
+                                    onImportSpotifyPlaylist = onImportSpotifyPlaylist,
                                     onShowAll = { onShowAll(pinnedFirst) },
                                     pinnedPlaylists = pinnedPlaylists,
                                 )
@@ -292,6 +232,78 @@ fun LibraryScreen(
         }
     }
 }
+
+/** One of the Library's folder rows: the page [item] opens, behind [icon]. */
+/** [logo], when set, is drawn in place of [icon] — a service's own mark. */
+data class LibraryLink(
+    val item: ShelfItem,
+    val icon: ImageVector,
+    @DrawableRes val logo: Int? = null,
+)
+
+/**
+ * The folders as a plain list — icon, name, chevron, hairlines between — the
+ * way a music app's library has always opened, rather than as cards that all
+ * look alike because none of them has artwork.
+ */
+@Composable
+private fun LibraryLinkList(links: List<LibraryLink>, onClick: (ShelfItem) -> Unit) {
+    Column(Modifier.padding(top = 4.dp, bottom = 22.dp)) {
+        links.forEachIndexed { index, link ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 54.dp)
+                    .clickable { onClick(link.item) }
+                    .padding(horizontal = PAGE_GUTTER),
+            ) {
+                if (link.logo != null) {
+                    // A mark, not a glyph: white on dark, black on light, with
+                    // its cut-outs left clear.
+                    Icon(
+                        painter = painterResource(link.logo),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.size(LINK_ICON_SIZE),
+                    )
+                } else {
+                    Icon(
+                        imageVector = link.icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(LINK_ICON_SIZE),
+                    )
+                }
+                Spacer(Modifier.width(LINK_ICON_GAP))
+                Text(
+                    text = link.item.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = BitChordIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            if (index < links.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = PAGE_GUTTER + LINK_ICON_SIZE + LINK_ICON_GAP),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
+    }
+}
+
+private val LINK_ICON_SIZE = 24.dp
+private val LINK_ICON_GAP = 16.dp
 
 /**
  * The way in to Replay, at the top of the page.
@@ -317,7 +329,7 @@ fun LibraryScreen(
  * load the rest.
  */
 @Composable
-private fun ReplayBanner(card: ReplayHeroCard?, onClick: () -> Unit) {
+internal fun ReplayBanner(card: ReplayHeroCard?, onClick: () -> Unit) {
     val palette = rememberArtworkColors(card?.artworkUrl)
     Box(
         Modifier
@@ -402,6 +414,7 @@ private fun PlaylistShelf(
     onItemClick: (ShelfItem) -> Unit,
     onItemLongPress: (ShelfItem) -> Unit,
     onNewPlaylist: () -> Unit,
+    onImportSpotifyPlaylist: (() -> Unit)? = null,
     onShowAll: () -> Unit,
     pinnedPlaylists: List<String> = emptyList(),
 ) {
@@ -412,12 +425,23 @@ private fun PlaylistShelf(
         onShowAll = onShowAll,
         pinnedPlaylists = pinnedPlaylists,
         leadingCard = {
-            NewShelfCard(
-                icon = BitChordIcons.Plus,
-                label = stringResource(R.string.new_playlist),
-                subtitle = stringResource(R.string.saved_to_youtube_music),
-                onClick = onNewPlaylist,
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING)) {
+                NewShelfCard(
+                    icon = BitChordIcons.Plus,
+                    label = stringResource(R.string.new_playlist),
+                    subtitle = stringResource(R.string.saved_to_youtube_music),
+                    onClick = onNewPlaylist,
+                )
+                if (onImportSpotifyPlaylist != null) {
+                    NewShelfCard(
+                        icon = BitChordIcons.Download,
+                        label = stringResource(R.string.import_spotify),
+                        subtitle = stringResource(R.string.import_spotify_subtitle),
+                        onClick = onImportSpotifyPlaylist,
+                        logo = R.drawable.spotify_logo,
+                    )
+                }
+            }
         },
     )
 }

@@ -29,6 +29,15 @@ enum class LyricsSource(
     // reliable hosting — behind them rather than in front, so a track does not
     // wait on a mirror that is down to be told what three other hosts already
     // had.
+    //
+    // [LRC_RED] is ahead of all of them: it is where [BINI_LYRICS] gets its
+    // documents now, so asking it directly is the same Apple timing without
+    // the middleman, and it is the one a dead mirror can't take down with it.
+    LRC_RED(
+        label = "lrc.red",
+        detail = "Apple Music TTML, filed by ISRC",
+        wordSynced = true,
+    ),
     BINI_LYRICS(
         label = "BiniLyrics",
         detail = "The same Apple timings, matched on the recording itself",

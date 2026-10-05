@@ -256,6 +256,7 @@
     <string name="medium">Orta</string>
     <string name="high">Yüksek</string>
     <string name="standard">Standart</string>
+    <string name="mixing">Miksleniyor</string>
     <string name="lossless">Kayıpsız</string>
     <string name="system">Sistem</string>
     <string name="light">Açık</string>
@@ -424,6 +425,9 @@
     <string name="your_playlists">Çalma listeleriniz</string>
     <string name="who_can_see_it">Kimler görebilir</string>
     <string name="about_artist">Sanatçı hakkında</string>
+    <string name="recent_album">Son albüm</string>
+    <string name="recent_single">Son single</string>
+    <string name="recent_ep">Son EP</string>
     <string name="about_album">Albüm hakkında</string>
     <string name="nothing_matches">“%1$s” ile eşleşen bir şey yok</string>
     <string name="close_search">Aramayı kapat</string>
@@ -918,6 +922,7 @@
     <string name="prefer_usb_dac">USB DAC tercih et</string>
     <string name="loudness_normalization">Ses yüksekliği normalleştirme</string>
     <string name="loudness_normalization_subtitle">Her parçayı aynı ses yüksekliğine getirir</string>
+    <string name="loudness_off_on_speaker">Telefon hoparlöründe kapat</string>
     <string name="loudness_target">Hedef ses yüksekliği</string>
     <string name="loudness_target_subtitle">Daha düşük kulaklığa, daha yüksek araba veya telefon hoparlörüne uygundur</string>
     <string name="loudness_target_value">%1$s LUFS</string>
@@ -1261,4 +1266,19 @@
 
 
 
+    <string name="lyrics_share_title">Şarkı sözlerini paylaş</string>
+    <string name="lyrics_share_description">Seçtiğin satırlar, kapakla birlikte bir kart üzerine yerleştirildi.</string>
+    <string name="lyrics_share_story">Hikâyeye çevir</string>
+    <string name="lyrics_share_story_revert">Karta dön</string>
+    <string name="lyrics_share_pick_limit">Kart dolu</string>
+    <string name="saved_bang">Kaydedildi!</string>
+    <string name="share_your_lyrics">Şarkı sözü kartını gönder</string>
+    <string name="your_lyrics_card">Şarkı sözü kartın</string>
+    <string name="source_needs_lossless_bt_unknown">Kayıpsız çıkış gerekir · hangi Bluetooth kodeğinin kullanıldığı anlaşılamıyor</string>
+    <string name="lossless_output_permission">Bluetooth kodeğini kontrol et</string>
+    <string name="lossless_output_permission_detail">LDAC veya LHDC kulaklıkların kayıpsız eklentileri açabilmesi için Yakındaki cihazlar iznini verin</string>
+    <string name="lossless_output_permission_denied">Yakındaki cihazlar izni kapalı</string>
+    <string name="lossless_output_permission_denied_detail">Ayarlar’ı açmak ve Yakındaki cihazlara izin vermek için dokunun — olmadan Bluetooth kodunuzu okuyamayız</string>
+    <string name="source_needs_lossless_output">Kayıpsız çıkış gerekir · kayıpsız sesi destekleyen bir cihaz kullanın</string>
+    <string name="source_needs_lossless_bt_codec">Kayıpsız çıkış gerekir · Bluetooth %1$s kullanıyor; kayıpsız sesi destekleyen bir cihaz kullanın</string>
 </resources>

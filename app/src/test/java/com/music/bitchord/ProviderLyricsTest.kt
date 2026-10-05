@@ -15,8 +15,9 @@ class ProviderLyricsTest {
 
     @Test
     fun `the six imported providers are exposed`() {
-        assertEquals(16, LyricsSource.entries.size)
+        assertEquals(17, LyricsSource.entries.size)
         assertTrue(LyricsSource.entries.containsAll(listOf(
+            LyricsSource.LRC_RED,
             LyricsSource.BETTER_LYRICS_PORTATO,
             LyricsSource.MEGALOBIZ,
             LyricsSource.PAXSENIX_SPOTIFY,
