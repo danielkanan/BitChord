@@ -72,14 +72,6 @@ fun ExploreScreen(
             contentPadding = contentPadding,
             modifier = Modifier.fillMaxSize(),
         ) {
-            item {
-                Text(
-                    text = stringResource(R.string.explore),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                )
-            }
             when (state) {
                 UiState.Loading -> item { ExploreSkeleton() }
                 is UiState.Error -> item {

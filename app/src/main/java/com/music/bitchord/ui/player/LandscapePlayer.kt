@@ -400,7 +400,7 @@ internal fun LandscapeCredits(
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White,
                     onOverflowChange = { titleOverflowing = it },
-                    leading = if (song.isExplicit == true) {
+                    trailing = if (song.isExplicit == true) {
                         { ExplicitBadge(Color.White) }
                     } else {
                         null

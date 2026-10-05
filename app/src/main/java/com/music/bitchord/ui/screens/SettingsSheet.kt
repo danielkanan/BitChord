@@ -121,7 +121,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
-import com.music.bitchord.ui.components.isGlassSupported
 import com.music.bitchord.ui.components.languageDisplayNameRes
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.SearchField
@@ -196,8 +195,6 @@ fun SettingsScreen(
     val nerdStats by AppSettings.showNerdStats.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val liquidGlass by AppSettings.liquidGlass.collectAsStateWithLifecycle()
-    val liquidGlassSupported = isGlassSupported()
     val lyricsBlur by AppSettings.lyricsBlur.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
     val canvasOverCellular by AppSettings.canvasOverCellular.collectAsStateWithLifecycle()
@@ -773,33 +770,6 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setReduceDynamicBlur(!reduceDynamicBlur) },
-                )
-            }
-            val liquidGlassTitle = stringResource(R.string.liquid_glass)
-            row(liquidGlassTitle, "glass", "blur") {
-                SettingsRow(
-                    icon = Icons.Rounded.AutoAwesome,
-                    title = liquidGlassTitle,
-                    subtitle = stringResource(
-                        if (liquidGlassSupported) {
-                            R.string.liquid_glass_subtitle
-                        } else {
-                            R.string.liquid_glass_unavailable
-                        },
-                    ),
-                    enabled = liquidGlassSupported,
-                    trailing = {
-                        Switch(
-                            checked = liquidGlass,
-                            onCheckedChange = AppSettings::setLiquidGlass,
-                            enabled = liquidGlassSupported,
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                checkedBorderColor = MaterialTheme.colorScheme.primary,
-                            ),
-                        )
-                    },
-                    onClick = { AppSettings.setLiquidGlass(!liquidGlass) },
                 )
             }
             // Left out where the player won't honour it: a window too wide for

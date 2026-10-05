@@ -48,8 +48,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -58,12 +56,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Upgrade
 import com.music.bitchord.data.listentogether.ServerConnectionState
@@ -200,28 +199,22 @@ import com.music.bitchord.ui.MainViewModel
 import com.music.bitchord.ui.components.BottomFadeScrim
 import com.music.bitchord.ui.components.BottomTab
 import com.music.bitchord.ui.components.FLOATING_BAR_MAX_WIDTH
-import com.music.bitchord.ui.components.FloatingBottomBar
 import com.music.bitchord.ui.components.GlassNavBar
-import com.music.bitchord.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
 import com.music.bitchord.ui.components.FrostedTopBar
 import com.music.bitchord.ui.components.LastfmLoginAlert
-import com.music.bitchord.ui.components.LocalAppBackdrop
-import com.music.bitchord.ui.components.LocalLiquidGlassEnabled
-import com.music.bitchord.ui.components.backdrop.backdrops.LayerBackdrop
-import com.music.bitchord.ui.components.backdrop.backdrops.layerBackdrop
-import com.music.bitchord.ui.components.backdrop.backdrops.rememberLayerBackdrop
-import com.music.bitchord.ui.components.isGlassSupported
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.ui.components.ListenBrainzTokenAlert
-import com.music.bitchord.ui.components.MiniPlayer
 import com.music.bitchord.ui.components.QueueActionNotice
 import com.music.bitchord.ui.components.QueueActionNoticeHost
 import com.music.bitchord.ui.components.TopBarAccountButton
-import com.music.bitchord.ui.components.TopBarBlur
 import com.music.bitchord.ui.components.TopBarDownloadButton
+import com.music.bitchord.ui.components.FROST_TINT
+import com.music.bitchord.ui.components.LocalFrostChrome
+import com.music.bitchord.ui.components.frostChromeColors
 import com.music.bitchord.ui.components.optimizedHazeEffect
+import com.music.bitchord.ui.components.toFrostChrome
 import com.music.bitchord.ui.components.topBarContentPadding
 import com.music.bitchord.ui.components.AppLanguageDialog
 import com.music.bitchord.ui.components.TranslationLanguageDialog
@@ -288,7 +281,6 @@ class MainActivity : AppCompatActivity() {
         setContent {
             val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
             val highPerformance by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
-            val liquidGlassEnabled by AppSettings.liquidGlass.collectAsStateWithLifecycle()
             val iosOverscrollFactory = rememberIosOverscrollFactory()
             val performanceRefreshRate by AppSettings.performanceRefreshRate.collectAsStateWithLifecycle()
             val composeView = LocalView.current
@@ -301,27 +293,8 @@ class MainActivity : AppCompatActivity() {
                 ThemeMode.DARK -> true
             }
             BitChordTheme(darkTheme = darkTheme) {
-                // The glass surfaces sample this layer, and a layer records only
-                // what is drawn into it — which, for BitChord, is a page that
-                // paints no background of its own. Everywhere a page is not
-                // showing artwork the recording is transparent, so the glass had
-                // nothing to blur there and you saw straight through it to the
-                // sharp page underneath: album art came through the bar blurred
-                // and text came through it untouched. The window's background is
-                // the floor the pages have always been drawn against, so it is
-                // laid down here too and the recording is opaque like the screen.
-                val windowBackground = MaterialTheme.colorScheme.background
-                val paintBackdrop: ContentDrawScope.() -> Unit = remember(windowBackground) {
-                    {
-                        drawRect(windowBackground)
-                        drawContent()
-                    }
-                }
-                val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
                 CompositionLocalProvider(
                     LocalOverscrollFactory provides iosOverscrollFactory,
-                    LocalLiquidGlassEnabled provides liquidGlassEnabled,
-                    LocalAppBackdrop provides appBackdrop,
                 ) {
                 // The window's width, measured rather than asked for.
                 //
@@ -339,7 +312,6 @@ class MainActivity : AppCompatActivity() {
                         darkTheme = darkTheme,
                         windowWidth = maxWidth,
                         windowHeight = maxHeight,
-                        appBackdrop = appBackdrop,
                     )
                 }
                 }
@@ -398,27 +370,11 @@ private fun BitChordApp(
      * would fire in portrait too if it only ever asked about width.
      */
     windowHeight: Dp,
-    appBackdrop: LayerBackdrop,
     viewModel: MainViewModel = viewModel(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val hazeState = remember { HazeState() }
-    // Recording the backdrop layer costs a draw pass, so it only runs when a
-    // liquid-glass surface (the nav bar or artwork-page back button) can sample it.
-    val glassActive = LocalLiquidGlassEnabled.current && isGlassSupported()
-    // "Reduce dynamic blur" keeps the glass bar's *shape* — the folding
-    // now-playing-and-tabs component is a layout, not an effect, and dropping
-    // back to the two stacked bars would be answering a question about material
-    // with a different screen. What it drops is the sampling: the surfaces fill
-    // solid (see [Modifier.liquidGlass]) and the whole-page layer recording
-    // below goes with them, which is the part that costs a draw pass.
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val glassSamplesBackdrop = glassActive && !reduceDynamicBlur
-    // What folds [GlassNavBar] between its expanded and inline shapes. Held here
-    // rather than inside the bar because the page's scroll is what drives it,
-    // and the page is a sibling of the bar rather than a child.
-    val navBarScroll = rememberFloatingTabBarScrollConnection()
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     /**
      * Whether the player's sheet is up. The player is always a full-screen
@@ -548,8 +504,8 @@ private fun BitChordApp(
     // Set each time the search tab is tapped, which SearchScreen uses as a
     // signal to focus the input field.
     var searchFocusRequested by remember { mutableStateOf(false) }
-    // Owned here so Liquid Glass can host the field in app chrome (outside the
-    // page backdrop) and still receive the tab-tap focus request.
+    // Owned here so app chrome can host the field and still receive the
+    // tab-tap focus request.
     val searchFocusRequester = remember { FocusRequester() }
     var searchChromeHeight by remember { mutableStateOf(SearchFieldChromeHeight) }
     val searchKeyboard = LocalSoftwareKeyboardController.current
@@ -661,9 +617,8 @@ private fun BitChordApp(
     // lives in AppSettings keyed by that page — Spotify-style, one playlist's
     // order never imposes itself on another, and every page keeps its own
     // across visits.
-    val detailSongSorts by AppSettings.detailSongSorts.collectAsStateWithLifecycle()
-    val songSort = detail?.browseId?.let { detailSongSorts[it] } ?: SongSort.DEFAULT
-    var songSortMenuOpen by remember { mutableStateOf(false) }
+    // Album / playlist pages keep the source order — no Sort control on either.
+    val songSort = SongSort.DEFAULT
     val likeStatuses by viewModel.likeStatuses.collectAsStateWithLifecycle()
     // Which tracks are being held on YouTube's own upload, so the player's menu
     // offers the way back out of a revert rather than the revert again.
@@ -939,7 +894,6 @@ private fun BitChordApp(
     // and every glass surface on them recompose once per frame for the length of
     // a fold. Keyed on the labels so a locale change still rebuilds it.
     val homeLabel = stringResource(R.string.home)
-    val playLabel = stringResource(R.string.play)
     val exploreLabel = stringResource(R.string.explore)
     val libraryLabel = stringResource(R.string.library)
     val searchLabel = stringResource(R.string.search)
@@ -2351,30 +2305,7 @@ private fun BitChordApp(
                             fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                         }
                     },
-                    modifier = Modifier
-                        .hazeSource(hazeState)
-                        .then(
-                            if (glassActive) {
-                                Modifier
-                                    // Not under "reduce dynamic blur": nothing
-                                    // samples the layer then, and recording a
-                                    // whole page into one for no reader is the
-                                    // cost that setting exists to remove.
-                                    .then(
-                                        if (glassSamplesBackdrop) {
-                                            Modifier.layerBackdrop(appBackdrop)
-                                        } else {
-                                            Modifier
-                                        },
-                                    )
-                                    // Every page's scroll passes through here, so
-                                    // the glass bar collapses on all of them
-                                    // without each one having to know about it.
-                                    .nestedScroll(navBarScroll)
-                            } else {
-                                Modifier
-                            },
-                        ),
+                    modifier = Modifier.hazeSource(hazeState),
                     label = "content",
                 ) { key ->
                     // Every branch below reads `key` rather than the state that
@@ -2673,25 +2604,6 @@ private fun BitChordApp(
                                 }
                             },
                             onSectionItemLongPress = onBrowseLongPress,
-                            // The page's own tracks, so the sheet has them already and
-                            // Play, Shuffle and Open are the buttons beside the one that
-                            // opened it rather than rows on it. Download is the other
-                            // way round: the header no longer carries it, so the sheet
-                            // is where a whole release is asked for — and the tracks
-                            // arrive stamped with the album they came off, which is what
-                            // the download record groups them under.
-                            onMore = { songs ->
-                                browseActions = BrowseTarget(
-                                    browseId = page.browseId,
-                                    title = page.title,
-                                    subtitle = page.subtitle,
-                                    thumbnailUrl = page.thumbnailUrl,
-                                    type = page.type,
-                                    songs = songs.map(withAlbum),
-                                    fromCard = false,
-                                    downloadId = downloadIdFor(page.browseId),
-                                )
-                            },
                             onArtistClick = { id, name ->
                                 viewModel.openDetail(id, name, "Artist", null, BrowseType.ARTIST)
                             },
@@ -2719,7 +2631,6 @@ private fun BitChordApp(
                         TAB_HOME -> HomeScreen(
                             state = homeState,
                             listState = homeListState,
-                            title = stringResource(R.string.listen_now),
                             signedIn = signedIn,
                             onSignIn = { webSession = WebSessionMode.SIGN_IN },
                             onItemClick = { item, shelfTitle ->
@@ -2800,7 +2711,7 @@ private fun BitChordApp(
                             scrollResetTrigger = searchScrollReset,
                             focusRequested = searchFocusRequested,
                             onFocusHandled = { searchFocusRequested = false },
-                            embedChrome = !glassActive,
+                            embedChrome = false,
                             externalChromeHeight = searchChromeHeight,
                             // Search hits are alternatives to each other, not a running
                             // order — play the one tapped and build a station from it.
@@ -2943,10 +2854,8 @@ private fun BitChordApp(
                     }
                 }
 
-                // Artwork-led pages and Replay leave the top-bar footprint
-                // transparent so the shared app-level gradient is continuous.
-                // Other pages use the navbar's regular bounded blur unless
-                // Liquid Glass has switched them to separated controls too.
+                // Floating chrome leaves the top-bar footprint transparent so
+                // the shared app-level gradient is continuous.
                 val isDetailVisible = detail != null &&
                     (detail.type == BrowseType.ALBUM ||
                         detail.type == BrowseType.PLAYLIST ||
@@ -2962,6 +2871,12 @@ private fun BitChordApp(
                 } else {
                     MaterialTheme.colorScheme.background
                 }
+                // Sleeve colour for the floating chrome on album / playlist /
+                // artist pages — frost tint, tab accents, back button, etc.
+                CompositionLocalProvider(
+                    LocalFrostChrome provides
+                        if (isDetailVisible) detailPalette.toFrostChrome() else null,
+                ) {
                 // This is the bottom floor itself turned upside down, not a
                 // separately maintained approximation. Both edges therefore
                 // share the same curve, height and page-aware colour — including
@@ -2972,15 +2887,6 @@ private fun BitChordApp(
                         .align(Alignment.TopCenter)
                         .rotate(180f),
                 )
-
-                // With Liquid Glass enabled, every page uses separated floating
-                // controls and therefore has no full-width pane underneath.
-                if (!glassActive && !isReplayVisible && !isDetailVisible) {
-                    TopBarBlur(
-                        hazeState = hazeState,
-                        modifier = Modifier.align(Alignment.TopCenter),
-                    )
-                }
 
                 FrostedTopBar(
                     title = when {
@@ -2996,16 +2902,17 @@ private fun BitChordApp(
                         detail != null && detailActiveShelf != null -> detailActiveShelf?.title.orEmpty()
                         detail != null -> detail.title
                         selectedMoodGenre != null -> selectedMoodGenre?.title.orEmpty()
-                        else -> tabs[selectedTab].let {
-                            if (it.label == "Play") stringResource(R.string.listen_now) else it.label
+                        else -> when (selectedTab) {
+                            TAB_HOME -> stringResource(R.string.listen_now)
+                            else -> tabs[selectedTab].label
                         }
                     },
-                    transparentBackdrop = glassActive || isReplayVisible || isDetailVisible,
+                    transparentBackdrop = true,
                     artworkPageChrome = isReplayVisible || isDetailVisible,
                     backButtonHazeState = hazeState,
                     trailingTitle = if (detail != null && detailActiveShelf != null) detail.title else null,
-                    // Search has no large in-list header to hand the title back to —
-                    // the field takes that space — so its bar title is always up.
+                    // Root tabs always show their title in the bar. Pushed pages
+                    // wait until their large in-page heading has scrolled away.
                     scrolled = when {
                         showSettings || showAccountScrobbling || showSources || showListenTogether ||
                             showEqualizer ||
@@ -3013,11 +2920,9 @@ private fun BitChordApp(
                             (libraryShowAll != null && detail == null) ||
                             (detail != null && detailActiveShelf != null) ||
                             selectedMoodGenre != null -> true
-                        // The page leads with its own large "Replay", so the bar
-                        // stays out of the way until that has been scrolled off.
                         showReplay -> replayScrolled
                         detail != null -> detailScrolled
-                        else -> scrolled || selectedTab == TAB_SEARCH
+                        else -> true
                     },
                     refreshing = currentFeed != null && currentFeed in refreshing,
                     pullFraction = { currentPull?.distanceFraction ?: 0f },
@@ -3170,22 +3075,77 @@ private fun BitChordApp(
                                     }
                                 }
                             }
-                            // Left of the account photo, and only on an album or
-                            // playlist page — an artist page has no single track
-                            // list to reorder, and the device folders already
-                            // carry this same control themselves (see
-                            // `LocalSearchField`).
-                            if (detail != null && !isLocalDetail && detail.type != BrowseType.ARTIST) {
-                                // The menu itself is [FrostedSortMenu], composed
-                                // with the app's other frosted overlays further
-                                // down — in the main hierarchy, where the haze
-                                // can see the content it blurs.
-                                IconButton(onClick = { songSortMenuOpen = true }) {
-                                    Icon(
-                                        Icons.Rounded.Sort,
-                                        contentDescription = stringResource(R.string.sort_songs),
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                    )
+                            // Share on album / playlist / artist; overflow on
+                            // album / playlist only.
+                            if (detail != null && !isLocalDetail) {
+                                detail.browseId?.takeIf {
+                                    detail.type == BrowseType.ALBUM ||
+                                        detail.type == BrowseType.PLAYLIST ||
+                                        detail.type == BrowseType.ARTIST
+                                }?.let { id ->
+                                    IconButton(
+                                        onClick = {
+                                            val url = when (detail.type) {
+                                                BrowseType.PLAYLIST ->
+                                                    "https://music.youtube.com/playlist?list=${id.removePrefix("VL")}"
+                                                BrowseType.ARTIST ->
+                                                    if (id.startsWith("UC")) {
+                                                        "https://music.youtube.com/channel/$id"
+                                                    } else {
+                                                        "https://music.youtube.com/browse/$id"
+                                                    }
+                                                else ->
+                                                    "https://music.youtube.com/browse/$id"
+                                            }
+                                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, url)
+                                            }
+                                            context.startActivity(
+                                                Intent.createChooser(sendIntent, detail.title),
+                                            )
+                                        },
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Share,
+                                            contentDescription = stringResource(R.string.share),
+                                            tint = frostChromeColors().content,
+                                        )
+                                    }
+                                }
+                                if (detail.type != BrowseType.ARTIST) {
+                                    IconButton(
+                                        onClick = {
+                                            val page = detail
+                                            val withAlbum: (Song) -> Song = { song ->
+                                                if (page.type == BrowseType.ALBUM) {
+                                                    song.copy(albumName = song.albumName ?: page.title)
+                                                } else {
+                                                    song
+                                                }
+                                            }
+                                            val songs = (page.songs as? UiState.Success)
+                                                ?.data
+                                                .orEmpty()
+                                                .map(withAlbum)
+                                            browseActions = BrowseTarget(
+                                                browseId = page.browseId,
+                                                title = page.title,
+                                                subtitle = page.subtitle,
+                                                thumbnailUrl = page.thumbnailUrl,
+                                                type = page.type,
+                                                songs = songs,
+                                                fromCard = false,
+                                                downloadId = downloadIdFor(page.browseId),
+                                            )
+                                        },
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.MoreVert,
+                                            contentDescription = stringResource(R.string.more),
+                                            tint = frostChromeColors().content,
+                                        )
+                                    }
                                 }
                             }
                             // Left of the account photo, and only there while
@@ -3193,35 +3153,38 @@ private fun BitChordApp(
                             // [TopBarDownloadButton], which decides that for
                             // itself rather than being told.
                             TopBarDownloadButton(onClick = { showDownloadManager = true })
-                            TopBarAccountButton(
-                                account = account,
-                                onClick = {
-                                    if (signedIn) {
-                                        viewModel.loadChannels()
-                                        showAccountSelector = true
-                                    } else showSettings = true
-                                },
-                                onSwipeProfile = { forward -> viewModel.stepProfile(forward) },
-                            )
+                            // Album / playlist pages keep the bar for ⋯ —
+                            // the profile stays on the root tabs.
+                            val hideProfileOnDetail = detail != null &&
+                                !isLocalDetail &&
+                                (detail.type == BrowseType.ALBUM || detail.type == BrowseType.PLAYLIST)
+                            if (!hideProfileOnDetail) {
+                                TopBarAccountButton(
+                                    account = account,
+                                    onClick = {
+                                        if (signedIn) {
+                                            viewModel.loadChannels()
+                                            showAccountSelector = true
+                                        } else showSettings = true
+                                    },
+                                    onSwipeProfile = { forward -> viewModel.stepProfile(forward) },
+                                )
+                            }
                         }
                     },
                 )
 
-                // Liquid Glass search field — sibling of FrostedTopBar / GlassNavBar
-                // so it samples the page backdrop from outside the recorded layer.
-                // Hosting it inside SearchScreen (or a Popup) either crashes or
-                // deadlocks the UI thread redrawing the backdrop against itself.
-                val showGlassSearchChrome = glassActive &&
-                    selectedTab == TAB_SEARCH &&
+                // Floating search field — sibling of FrostedTopBar / GlassNavBar.
+                val showSearchChrome = selectedTab == TAB_SEARCH &&
                     detail == null &&
                     selectedMoodGenre == null &&
                     libraryShowAll == null &&
                     !showSettings && !showAccountScrobbling && !showSources &&
                     !showListenTogether && !showEqualizer &&
                     !showDiscord && !showHistory && !showReplay
-                if (showGlassSearchChrome) {
+                if (showSearchChrome) {
                     val showSearchFilters = results != null && searchSuggestions.isEmpty()
-                    LaunchedEffect(searchFocusRequested, showGlassSearchChrome) {
+                    LaunchedEffect(searchFocusRequested, showSearchChrome) {
                         if (searchFocusRequested) {
                             searchFocusRequester.requestFocus()
                             searchKeyboard?.show()
@@ -3236,6 +3199,7 @@ private fun BitChordApp(
                         showFilters = showSearchFilters,
                         filter = filter,
                         onFilterChange = viewModel::onFilterChange,
+                        hazeState = hazeState,
                         onHeightChanged = { searchChromeHeight = it },
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -3243,7 +3207,7 @@ private fun BitChordApp(
                     )
                 }
 
-                // Drawn before the bars so their own glass reads on top of it.
+                // Drawn before the bars so their own frost reads on top of it.
                 BottomFadeScrim(
                     withMiniPlayer = player.song != null,
                     // Not the wash: by the foot of the screen the page has finished
@@ -3253,7 +3217,6 @@ private fun BitChordApp(
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
 
-                // One tab handler, whichever bar is drawing it.
                 val onTabSelected: (Int) -> Unit = { index ->
                     viewModel.clearDetail()
                     viewModel.closeMoodGenre()
@@ -3275,22 +3238,18 @@ private fun BitChordApp(
                     }
                 }
 
-                if (glassActive) Column(
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .widthIn(max = FLOATING_BAR_MAX_WIDTH)
                         .fillMaxWidth(),
                 ) {
                     QueueActionNoticeHost(queueNotice)
-                    // Liquid glass replaces the two stacked bars with the single
-                    // component they are stacked to imitate: the now playing
-                    // controls dock into the tab bar rather than riding above it,
-                    // and the pair folds together on scroll. See [GlassNavBar].
                     GlassNavBar(
                         tabs = tabs,
                         selectedIndex = selectedTab,
                         onTabSelected = onTabSelected,
-                        scrollConnection = navBarScroll,
+                        hazeState = hazeState,
                         song = player.song,
                         isPlaying = player.isPlaying,
                         isLoading = playPauseBusy,
@@ -3304,44 +3263,7 @@ private fun BitChordApp(
                         onBlockedControl = showHostOnlyNotice,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                } else Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        // Capped and centred rather than run to the page's edges
-                        // — see [FLOATING_BAR_MAX_WIDTH]. It sits on the Column
-                        // rather than on each bar so the two are held to the same
-                        // width and keep the shared left and right edge they have
-                        // on a phone. Before fillMaxWidth, so the fill has
-                        // already been bounded by the time it is applied.
-                        .widthIn(max = FLOATING_BAR_MAX_WIDTH)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    QueueActionNoticeHost(queueNotice)
-                    player.song?.let { song ->
-                        MiniPlayer(
-                            song = song,
-                            isPlaying = player.isPlaying,
-                            isLoading = playPauseBusy,
-                            hazeState = hazeState,
-                            onPlayPause = {
-                                togglePlayPause()
-                            },
-                            onNext = { controller?.seekToNextMediaItem() },
-                            onPrevious = { controller?.seekToPrevious() },
-                            onExpand = { showNowPlaying = true },
-                            controlsLocked = controlsLocked,
-                            onBlockedControl = showHostOnlyNotice,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    FloatingBottomBar(
-                        tabs = tabs,
-                        selectedIndex = selectedTab,
-                        hazeState = hazeState,
-                        onTabSelected = onTabSelected,
-                    )
+                }
                 }
             }
 
@@ -4073,33 +3995,6 @@ private fun BitChordApp(
             )
         }
 
-        if (songSortMenuOpen) {
-            BackHandler { songSortMenuOpen = false }
-            FrostedSortMenu(
-                hazeState = hazeState,
-                selected = songSort,
-                onSelect = { option ->
-                    detail?.browseId?.let { AppSettings.setDetailSongSort(it, option) }
-                    songSortMenuOpen = false
-                },
-                // Flipping the date direction deliberately leaves the menu up:
-                // closing it here would cut the arrow's rotation animation off
-                // before it played, and the open menu lets the direction flip
-                // read against the list reordering behind the frost.
-                onFlipDateDirection = {
-                    detail?.browseId?.let { browseId ->
-                        val next = when (songSort) {
-                            SongSort.DATE_ADDED_DESC -> SongSort.DATE_ADDED_ASC
-                            SongSort.DATE_ADDED_ASC -> SongSort.DATE_ADDED_DESC
-                            else -> SongSort.DATE_ADDED_DESC
-                        }
-                        AppSettings.setDetailSongSort(browseId, next)
-                    }
-                },
-                onDismiss = { songSortMenuOpen = false },
-            )
-        }
-
         if (showAccountSelector) {
             BackHandler { showAccountSelector = false }
             AccountProfileSelector(
@@ -4420,125 +4315,6 @@ private fun LibrarySort.localizedLabel(): String = when (this) {
     LibrarySort.DEFAULT -> stringResource(R.string.sort_default)
     LibrarySort.TITLE_ASC -> stringResource(R.string.sort_title_ascending)
     LibrarySort.TITLE_DESC -> stringResource(R.string.sort_title_descending)
-}
-
-/**
- * The track-list sort menu, styled after the account switcher: a full-screen
- * scrim to catch the dismissal tap, and the options on a frosted panel that
- * blurs the page behind it. Composed here in the main hierarchy rather than
- * as a popup window — which is exactly what lets the haze see the content it
- * is blurring.
- */
-@OptIn(ExperimentalHazeMaterialsApi::class)
-@Composable
-private fun FrostedSortMenu(
-    hazeState: HazeState,
-    selected: SongSort,
-    onSelect: (SongSort) -> Unit,
-    onFlipDateDirection: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val shape = MaterialTheme.shapes.extraLarge
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = .48f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.TopEnd,
-    ) {
-        Surface(
-            color = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = shape,
-            modifier = Modifier
-                .padding(top = 56.dp, end = 20.dp)
-                .width(IntrinsicSize.Max)
-                .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.optimizedHazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.thin(MaterialTheme.colorScheme.surface),
-                        )
-                    },
-                )
-                .clickable(onClick = {}),
-        ) {
-            Column(Modifier.padding(vertical = 8.dp)) {
-                // Date added is one row, Spotify-style: the arrow on it shows
-                // the direction — up for newest first, down for oldest — and
-                // tapping flips it, the rotation animating the flip. Up is
-                // also where a fresh activation lands, newest first being the
-                // point of the feature.
-                val dateActive = selected == SongSort.DATE_ADDED_ASC ||
-                    selected == SongSort.DATE_ADDED_DESC
-                val arrowRotation by animateFloatAsState(
-                    targetValue = if (selected == SongSort.DATE_ADDED_ASC) 180f else 0f,
-                    animationSpec = tween(durationMillis = 200),
-                    label = "dateAddedArrow",
-                )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .clickable(role = Role.Button) { onFlipDateDirection() }
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        stringResource(R.string.sort_date_added_toggle),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (dateActive) {
-                        Icon(
-                            Icons.Rounded.ArrowUpward,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.rotate(arrowRotation),
-                        )
-                    }
-                }
-                SongSort.entries
-                    .filter { it != SongSort.DATE_ADDED_ASC && it != SongSort.DATE_ADDED_DESC }
-                    .forEach { option ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 44.dp)
-                                .clickable(role = Role.Button) { onSelect(option) }
-                                .padding(horizontal = 20.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                option.localizedLabel(),
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (option == selected) {
-                                Icon(
-                                    Icons.Rounded.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        }
-                    }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SongSort.localizedLabel(): String = when (this) {
-    SongSort.DEFAULT -> stringResource(R.string.sort_default)
-    SongSort.TITLE_ASC -> stringResource(R.string.sort_title_ascending)
-    SongSort.TITLE_DESC -> stringResource(R.string.sort_title_descending)
-    SongSort.DATE_ADDED_ASC -> stringResource(R.string.sort_date_added_oldest)
-    SongSort.DATE_ADDED_DESC -> stringResource(R.string.sort_date_added)
 }
 
 /**

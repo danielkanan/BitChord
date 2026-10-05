@@ -895,12 +895,6 @@
 
     <string name="legacy_mesh_gradient_subtitle">恢复 v1.5 中播放器背后的流动色块效果</string>
 
-    <string name="liquid_glass">液态玻璃 (Liquid Glass)</string>
-
-    <string name="liquid_glass_subtitle">浮动导航栏上的折射玻璃效果。仅限 Android 12+；会占用更多 GPU。</string>
-
-    <string name="liquid_glass_unavailable">需要 Android 12 或更高版本</string>
-
     <string name="listen_as">以该身份收听</string>
 
     <string name="lyrics_debug_logs">歌词调试日志</string>

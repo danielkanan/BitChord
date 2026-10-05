@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.R
 import com.music.bitchord.ui.utils.containSheetGestures
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.ui.components.FROST_TINT
 import com.music.bitchord.ui.components.optimizedHazeEffect
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
@@ -128,7 +129,7 @@ internal fun LyricsOffsetSheet(
                             Modifier
                                 .optimizedHazeEffect(
                                     state = hazeState,
-                                    style = HazeMaterials.regular(Color(0xFF141414)),
+                                    style = HazeMaterials.regular(FROST_TINT),
                                 )
                                 .background(Color(0xFF121212).copy(alpha = 0.9f))
                         },

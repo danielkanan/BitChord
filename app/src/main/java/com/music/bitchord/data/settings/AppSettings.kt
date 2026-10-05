@@ -443,9 +443,6 @@ object AppSettings {
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
 
-    /** Real backdrop-sampled glass (blur, lens refraction) on the floating nav bar, Android 12+ only. */
-    val liquidGlass = MutableStateFlow(false)
-
     /** Blurs unfocused lyric lines, keeping the active line sharp. */
     val lyricsBlur = MutableStateFlow(true)
 
@@ -866,7 +863,6 @@ object AppSettings {
         preferMusicOnly.value = prefs.getBoolean(KEY_PREFER_MUSIC_ONLY, false)
         smartVersionAlignment.value = prefs.getBoolean(KEY_SMART_VERSION_ALIGNMENT, true)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
-        liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, false)
         lyricsBlur.value = prefs.getBoolean(KEY_LYRICS_BLUR, true)
         lyricsOffsetMs.value = prefs.getInt(KEY_LYRICS_OFFSET_MS, 0)
             .coerceIn(MIN_LYRICS_OFFSET_MS, MAX_LYRICS_OFFSET_MS)
@@ -1259,11 +1255,6 @@ object AppSettings {
         val editor = prefs.edit().putBoolean(KEY_REDUCE_BLUR, value)
         if (value) editor.putBoolean(KEY_HIGH_PERFORMANCE_MODE, false)
         editor.apply()
-    }
-
-    fun setLiquidGlass(value: Boolean) {
-        liquidGlass.value = value
-        prefs.edit().putBoolean(KEY_LIQUID_GLASS, value).apply()
     }
 
     fun setHighPerformanceMode(value: Boolean) {
@@ -1969,7 +1960,6 @@ object AppSettings {
     private const val KEY_PREFER_MUSIC_ONLY = "prefer_music_only"
     private const val KEY_SMART_VERSION_ALIGNMENT = "smart_version_alignment"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
-    private const val KEY_LIQUID_GLASS = "liquid_glass"
     private const val KEY_LYRICS_BLUR = "lyrics_blur"
     private const val KEY_LYRICS_OFFSET_MS = "lyrics_offset_ms"
     private const val KEY_TRANSLATION_LANGUAGE = "translation_language"

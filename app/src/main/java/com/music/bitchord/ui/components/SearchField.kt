@@ -1,7 +1,6 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -36,6 +35,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.music.bitchord.R
+import dev.chrisbanes.haze.HazeState
 
 /**
  * The pill-shaped search field used at the top of the search page — a
@@ -44,12 +44,8 @@ import com.music.bitchord.R
  * else the app needs the same "search this" affordance, such as filtering the
  * settings list.
  *
- * With Liquid Glass on, the field matches the nav / mini-player pill. Full
- * backdrop sampling ([liquidGlass]) is only used when [sampleAppBackdrop] is
- * true — the caller must draw the field *outside* the page's recorded
- * backdrop layer (a [androidx.compose.ui.window.Popup] or MainActivity chrome),
- * or sampling that layer from inside itself crashes the process. In-page
- * callers keep the lightweight tinted match instead.
+ * When [hazeState] is provided (app chrome), the field matches the frosted nav
+ * / mini-player pills. In-page callers keep a solid surfaceVariant fill.
  */
 @Composable
 fun SearchField(
@@ -59,11 +55,8 @@ fun SearchField(
     focusRequester: FocusRequester = remember { FocusRequester() },
     /** What the empty field says it is for — the one part that changes per screen. */
     placeholder: String = stringResource(R.string.search_hint),
-    /**
-     * Sample [LocalAppBackdrop] with real [liquidGlass]. Only safe when this
-     * field is composed outside the page [layerBackdrop] recording.
-     */
-    sampleAppBackdrop: Boolean = false,
+    /** Frosted Haze fill when drawn in app chrome over a [hazeSource]. */
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
 ) {
     val focusManager = LocalFocusManager.current
@@ -74,45 +67,25 @@ fun SearchField(
         onSubmit()
         focusManager.clearFocus()
     }
-    val useGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
     // Same family as [MiniPlayer] / [FloatingBottomBar]: half the height, so
     // the field stays a true pill if its contents ever change the row height.
-    val shape = if (useGlass) {
-        RoundedCornerShape(percent = 50)
-    } else {
-        RoundedCornerShape(11.dp)
-    }
-    val iconTint = if (useGlass) {
-        glassContentColor().copy(alpha = 0.65f)
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val textColor = if (useGlass) {
-        glassContentColor()
-    } else {
-        MaterialTheme.colorScheme.onBackground
-    }
-    val placeholderColor = if (useGlass) {
-        glassContentColor().copy(alpha = 0.55f)
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val shape = RoundedCornerShape(percent = 50)
+    val iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val placeholderColor = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = modifier
             .fillMaxWidth()
             // Fixed height prevents the row from growing when text is entered
             .height(46.dp)
             .then(
-                when {
-                    useGlass && sampleAppBackdrop -> Modifier
-                        .clip(shape)
-                        .liquidGlass(shape)
-                        .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
-                    useGlass -> Modifier.lightweightLiquidGlass(
+                if (hazeState != null) {
+                    Modifier.frostedSurface(
                         shape = shape,
-                        fallbackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        hazeState = hazeState,
                     )
-                    else -> Modifier.background(MaterialTheme.colorScheme.surfaceVariant, shape)
+                } else {
+                    Modifier.background(MaterialTheme.colorScheme.surfaceVariant, shape)
                 },
             )
             // Asymmetric: the magnifier is a button now and wants a real touch

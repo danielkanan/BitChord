@@ -916,12 +916,6 @@
 
     <string name="legacy_mesh_gradient_subtitle">Restaure les formes colorées animées de la v1.5</string>
 
-    <string name="liquid_glass">Verre liquide</string>
-
-    <string name="liquid_glass_subtitle">Effet de verre réfracté sur la barre flottante. Android 12+ uniquement.</string>
-
-    <string name="liquid_glass_unavailable">Nécessite Android 12 ou plus récent</string>
-
     <string name="listen_as">Écouter en tant que</string>
 
     <string name="lyrics_debug_logs">Journaux de débogage des paroles</string>

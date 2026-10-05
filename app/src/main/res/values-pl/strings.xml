@@ -951,12 +951,6 @@
 
     <string name="legacy_mesh_gradient_subtitle">Przywraca płynne plamy kolorów z wersji v1.5</string>
 
-    <string name="liquid_glass">Płynne szkło</string>
-
-    <string name="liquid_glass_subtitle">Efekt szkła na pasku nawigacyjnym. Tylko Android 12+.</string>
-
-    <string name="liquid_glass_unavailable">Wymaga systemu Android 12 lub nowszego</string>
-
     <string name="listen_as">Słuchaj jako</string>
 
     <string name="lyrics_debug_logs">Dzienniki debugowania tekstu</string>

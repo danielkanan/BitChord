@@ -80,6 +80,7 @@ import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.components.songListSkeleton
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
+import dev.chrisbanes.haze.HazeState
 import java.util.Locale
 
 /** Search field height + its bottom gutter — used when chrome is drawn outside. */
@@ -89,9 +90,8 @@ val SearchFieldChromeHeight = 50.dp
 val SearchFilterChromeHeight = 44.dp
 
 /**
- * Floating search field (+ optional filter tabs) for Liquid Glass. Drawn from
- * MainActivity chrome — outside the page [layerBackdrop] — so it can use real
- * [com.music.bitchord.ui.components.liquidGlass] like the nav bar.
+ * Floating search field (+ optional filter tabs) for the frosted chrome layout.
+ * Drawn from MainActivity so it sits with FrostedTopBar / GlassNavBar.
  */
 @Composable
 fun SearchScreenChrome(
@@ -102,6 +102,7 @@ fun SearchScreenChrome(
     showFilters: Boolean,
     filter: SearchFilter,
     onFilterChange: (SearchFilter) -> Unit,
+    hazeState: HazeState,
     modifier: Modifier = Modifier,
     onHeightChanged: (Dp) -> Unit = {},
 ) {
@@ -118,7 +119,7 @@ fun SearchScreenChrome(
             onQueryChange = onQueryChange,
             onSubmit = onSubmit,
             focusRequester = focusRequester,
-            sampleAppBackdrop = true,
+            hazeState = hazeState,
             modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 4.dp),
         )
         if (showFilters) {
@@ -164,7 +165,7 @@ fun SearchScreen(
     onTypeaheadLongPress: ((Song) -> Unit)? = null,
     /**
      * When false, the field/filters are drawn by [SearchScreenChrome] in the
-     * app chrome (Liquid Glass). The list still reserves space for them.
+     * app chrome. The list still reserves space for them.
      */
     embedChrome: Boolean = true,
     /** Height of externally hosted chrome when [embedChrome] is false. */
@@ -211,8 +212,7 @@ fun SearchScreen(
         }
     }
     // When [embedChrome] is false, MainActivity hosts [SearchScreenChrome]
-    // outside the page backdrop so Liquid Glass can sample it. Otherwise keep
-    // the stacked layout under the bounded TopBarBlur pane.
+    // with the frosted floating chrome. Otherwise keep the stacked in-page field.
     val density = LocalDensity.current
     // Seeded so the first frame already clears the field before measure lands.
     var chromeHeight by remember { mutableStateOf(SearchFieldChromeHeight) }

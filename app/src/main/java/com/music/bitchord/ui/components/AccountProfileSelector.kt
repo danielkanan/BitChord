@@ -84,7 +84,7 @@ fun AccountProfileSelector(
                     } else {
                         Modifier.optimizedHazeEffect(
                             state = hazeState,
-                            style = HazeMaterials.thin(MaterialTheme.colorScheme.surface),
+                            style = HazeMaterials.thin(FROST_TINT),
                         )
                     },
                 )

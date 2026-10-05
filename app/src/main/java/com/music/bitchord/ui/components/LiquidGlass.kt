@@ -1,243 +1,107 @@
 /*
- * The glass rendering itself is Kyant0/backdrop (Apache-2.0), vendored at
- * [com.music.bitchord.ui.components.backdrop] — see that package for the
- * upstream attribution. This file is the integration glue, adapted from
- * EchoMusicApp/Echo-Music's GlassEffectConfig/Modifier.liquidGlass
- * (GPL-3.0), cut down from Echo's full per-component/vibrancy-slider config
- * to the single on/off switch BitChord exposes in Settings. It is used by the
- * floating nav bar and, while enabled, the app-wide floating top controls.
+ * Shared frosted chrome for the floating nav / top controls / search field.
+ * Material is Haze blur (same family as the classic FloatingBottomBar), not the
+ * former backdrop-sampled liquid glass refraction path.
  */
 package com.music.bitchord.ui.components
 
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.AppSettings
-import com.music.bitchord.ui.components.backdrop.Backdrop
-import com.music.bitchord.ui.components.backdrop.drawBackdrop
-import com.music.bitchord.ui.components.backdrop.effects.blur
-import com.music.bitchord.ui.components.backdrop.effects.colorControls
-import com.music.bitchord.ui.components.backdrop.effects.lens
-import com.music.bitchord.ui.components.backdrop.highlight.Highlight
-import com.music.bitchord.ui.components.backdrop.highlight.HighlightElement
-import com.music.bitchord.ui.components.backdrop.highlight.HighlightStyle
-import com.music.bitchord.ui.components.backdrop.internal.ShapeProvider
-import com.music.bitchord.ui.components.backdrop.shadow.InnerShadow
-import com.music.bitchord.ui.components.backdrop.shadow.InnerShadowElement
-import com.music.bitchord.ui.components.backdrop.shadow.Shadow
-import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.dp
+import com.music.bitchord.ui.theme.ArtworkPalette
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
 
-/** Whether the liquid glass nav bar is turned on — see [AppSettings.liquidGlass]. */
-val LocalLiquidGlassEnabled = staticCompositionLocalOf { false }
-
-/** The backdrop content (app UI) that a liquid glass surface samples from. */
-val LocalAppBackdrop = staticCompositionLocalOf<Backdrop> { error("No AppBackdrop provided") }
+/** Tint washed over every frosted Haze surface when no page palette is active. */
+val FROST_TINT = Color(0xFF222222)
 
 /**
- * The backdrop blur pipeline requires [android.graphics.RenderEffect] on a
- * [android.graphics.RenderNode], available from Android 12 (API 31).
+ * The hairline along a floating bar's edge — same stroke every frosted
+ * surface shares when no page palette is active.
  */
-fun isGlassSupported(sdkInt: Int = Build.VERSION.SDK_INT): Boolean = sdkInt >= Build.VERSION_CODES.S
-
-/** Apple-matched defaults (Echo's GlassEffectConfig()), fixed rather than user sliders. */
-private const val VIBRANCY = 1f
-private const val BLUR_RADIUS_DP = 8f
-private const val LENS_HEIGHT = 0.5f
-private const val LENS_AMOUNT = 0.5f
-private const val LENS_MAX_DP = 48f
-/**
- * How hard the grey wash sits on the blurred backdrop. Kept modest so artwork
- * still reads through, but high enough that glass never dissolves into a flat
- * black or white page behind it.
- */
-private const val SURFACE_OPACITY = 0.42f
-
-/** Soft grey washes — a touch above near-black / near-white, not a slab. */
-private val DarkGlassTint = Color(0xFF2A2A2C)
-private val LightGlassTint = Color(0xFFF0F0F2)
-
-@Composable
-private fun glassSurfaceTint(): Color =
-    if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) LightGlassTint else DarkGlassTint
+val GLASS_EDGE_WIDTH = 0.5.dp
+val GLASS_EDGE_COLOR = Color(0xFF3E3E3E)
 
 /**
- * Resolution fraction the glass surface records and processes its backdrop at.
+ * Colours the floating frost chrome takes from an artwork-led page.
  *
- * A third, which is what Echo's `glassResolutionScale` comes to at this blur
- * radius. It was briefly raised to a half while the sharp-text bug was being
- * chased — wrongly, as it turned out: the cause was a transparent backdrop, not
- * the resample (see MainActivity's `paintBackdrop`). A third is nine times fewer
- * pixels than full resolution through the colour matrix, the blur and the lens
- * shader, on as many as six surfaces at once in the middle of a fold, and the
- * blur is what hides the upscale.
+ * Null in [LocalFrostChrome] means the fixed dark frost ([FROST_TINT] /
+ * [GLASS_EDGE_COLOR]) and the theme's onSurface / primary for glyphs.
  */
-private const val GLASS_RESOLUTION_SCALE = 0.33f
-
-/**
- * The hairline along a bar's edge, and what stands in for the glass rim
- * wherever the glass itself is not drawn.
- *
- * Kept softer than a hard white stroke — depth comes from [GlassHighlight] /
- * [GlassInnerShadow] rather than a bright rim.
- */
-internal val GLASS_EDGE_WIDTH = 0.5.dp
-internal val GLASS_EDGE_COLOR = Color.White.copy(alpha = 0.07f)
-
-/** Soft specular rim — lower alpha + a little blur so it reads as light, not chalk. */
-private val GlassHighlight = Highlight(
-    width = 0.65.dp,
-    blurRadius = 1.25.dp,
-    alpha = 0.75f,
-    style = HighlightStyle.Default(
-        color = Color.White.copy(alpha = 0.32f),
-        falloff = 1.35f,
-    ),
-)
-
-/** Outer drop — a touch deeper so the pill lifts off the page. */
-private val GlassShadow = Shadow(
-    radius = 22.dp,
-    offset = DpOffset(0.dp, 5.dp),
-    color = Color.Black.copy(alpha = 0.18f),
-)
-
-/** Inset shade along the rim — the bevel that makes the edge feel thick. */
-private val GlassInnerShadow = InnerShadow(
-    radius = 8.dp,
-    offset = DpOffset(0.dp, 1.5.dp),
-    color = Color.Black.copy(alpha = 0.28f),
+@Immutable
+data class FrostChromeColors(
+    val tint: Color,
+    val edge: Color,
+    val content: Color,
+    val contentVariant: Color,
+    val accent: Color,
 )
 
 /**
- * Icon and label colour for content sitting on a glass surface.
- *
- * Glass shows whatever is behind it rather than the theme's surface colour, so
- * the usual onSurface greys have nothing dependable to sit against. Pure black
- * or white off the theme's luminance is the only tint that holds against
- * arbitrary artwork, and it is what Echo's own glass nav bar uses.
+ * When non-null, every [frostedSurface] and the floating bars paint with these
+ * colours instead of the fixed dark frost — so album / playlist chrome tracks
+ * the sleeve the page is washed in.
  */
-@Composable
-fun glassContentColor(): Color =
-    if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) Color.Black else Color.White
+val LocalFrostChrome = staticCompositionLocalOf<FrostChromeColors?> { null }
 
-/**
- * Selected-tab indicator colour for a glass surface: the inverse of
- * [glassContentColor] rather than the same tint at lower alpha — white in
- * light theme, black in dark theme, so the pill reads as a shaded scrim
- * rather than as more of the same tint already on the glyph and label.
- */
-@Composable
-fun glassIndicatorColor(): Color =
-    if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) Color.White else Color.Black
+/** Frost chrome colours derived from an [ArtworkPalette]. */
+fun ArtworkPalette.toFrostChrome(): FrostChromeColors = FrostChromeColors(
+    // Same elevated fill the page's own glass chips use, so the bars belong
+    // to the wash rather than sitting as a grey cutout on top of it.
+    tint = elevated,
+    edge = onBackground.copy(alpha = 0.18f),
+    content = onBackground,
+    contentVariant = onBackgroundVariant,
+    accent = accent,
+)
 
-/**
- * A lightweight visual match for liquid glass over a stable background.
- *
- * This keeps the same translucent tint, directional highlight and hairline as
- * [liquidGlass], but intentionally performs no backdrop capture, blur, lens
- * refraction or shadow rendering. When Liquid Glass is disabled or unsupported,
- * [fallbackColor] preserves the control's existing filled appearance.
- */
+/** Resolved frost colours for the call site — page palette, or the defaults. */
 @Composable
-fun Modifier.lightweightLiquidGlass(
-    shape: CornerBasedShape,
-    fallbackColor: Color,
-): Modifier {
-    val useGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
-    val glassTint = glassSurfaceTint()
-    val shapeProvider = ShapeProvider { shape }
-
-    return clip(shape)
-        .background(
-            color = if (useGlass) glassTint.copy(alpha = SURFACE_OPACITY) else fallbackColor,
-            shape = shape,
-        )
-        .then(
-            if (useGlass) {
-                Modifier
-                    .then(
-                        InnerShadowElement(
-                            shapeProvider = shapeProvider,
-                            shadow = { GlassInnerShadow },
-                        ),
-                    )
-                    .then(
-                        HighlightElement(
-                            shapeProvider = shapeProvider,
-                            highlight = { GlassHighlight },
-                        ),
-                    )
-            } else {
-                Modifier
-            },
-        )
-        .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
+fun frostChromeColors(): FrostChromeColors {
+    LocalFrostChrome.current?.let { return it }
+    val scheme = MaterialTheme.colorScheme
+    return FrostChromeColors(
+        tint = FROST_TINT,
+        edge = GLASS_EDGE_COLOR,
+        content = scheme.onSurface,
+        contentVariant = scheme.onSurfaceVariant,
+        accent = scheme.primary,
+    )
 }
 
 /**
- * Renders this composable as a liquid glass surface sampling [LocalAppBackdrop]:
- * vibrancy, blur and lens refraction, then a theme-adaptive surface tint (light
- * glass on light theme, dark on dark). Returns the receiver unchanged on devices
- * without RenderEffect support — callers should still gate on [isGlassSupported]
- * to fall back to the regular Haze treatment there.
- *
- * Under "reduce dynamic blur" the surface is filled solid instead, which is what
- * that setting promises everywhere else in the app. It is checked here rather
- * than at each call site so there is one answer to it: [MainActivity] also stops
- * recording the backdrop layer when it is on, and a surface that still tried to
- * sample would be sampling a layer nothing is drawing into.
- *
- * [shape] is restricted to [CornerBasedShape] because the backdrop's lens effect
- * throws for any other shape type.
+ * Frosted Haze fill clipped to [shape], or a solid tint when blur is
+ * reduced / no [hazeState] is available. Always finishes with the chrome edge.
  */
+@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
-fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier {
-    if (!isGlassSupported()) return this
+fun Modifier.frostedSurface(
+    shape: CornerBasedShape,
+    hazeState: HazeState?,
+): Modifier {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    if (reduceDynamicBlur) {
-        return background(MaterialTheme.colorScheme.surface, shape)
-            .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
-    }
-    val backdrop = LocalAppBackdrop.current
-    val density = LocalDensity.current
-    val blurPx = with(density) { BLUR_RADIUS_DP.dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val lensHeightPx = with(density) { (LENS_HEIGHT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val lensAmountPx = with(density) { (LENS_AMOUNT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val surfaceTintColor = glassSurfaceTint()
-
-    return drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = {
-            colorControls(saturation = 1f + 0.5f * VIBRANCY)
-            blur(blurPx)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                lens(
-                    refractionHeight = lensHeightPx,
-                    refractionAmount = lensAmountPx,
-                    depthEffect = true,
-                    chromaticAberration = true,
+    val chrome = frostChromeColors()
+    return clip(shape)
+        .then(
+            when {
+                hazeState != null && !reduceDynamicBlur -> Modifier.optimizedHazeEffect(
+                    state = hazeState,
+                    style = HazeMaterials.regular(chrome.tint),
                 )
-            }
-        },
-        highlight = { GlassHighlight },
-        shadow = { GlassShadow },
-        innerShadow = { GlassInnerShadow },
-        onDrawSurface = {
-            drawRect(color = surfaceTintColor.copy(alpha = SURFACE_OPACITY), size = size)
-        },
-        backdropScale = GLASS_RESOLUTION_SCALE,
-    )
+                else -> Modifier.background(chrome.tint, shape)
+            },
+        )
+        .border(GLASS_EDGE_WIDTH, chrome.edge, shape)
 }

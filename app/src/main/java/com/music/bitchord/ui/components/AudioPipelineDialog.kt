@@ -243,7 +243,7 @@ fun AudioPipelineDialog(
                         Modifier
                             .optimizedHazeEffect(
                                 state = hazeState,
-                                style = HazeMaterials.regular(Color(0xFF141414)),
+                                style = HazeMaterials.regular(FROST_TINT),
                             )
                             .background(Color(0xFF121212).copy(alpha = 0.9f))
                     }

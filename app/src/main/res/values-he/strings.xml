@@ -920,12 +920,6 @@
 
     <string name="legacy_mesh_gradient_subtitle">מחזיר את כתמי הצבע הנעים מגרסה v1.5</string>
 
-    <string name="liquid_glass">זכוכית נוזלית</string>
-
-    <string name="liquid_glass_subtitle">אפקט זכוכית בסרגל הניווט. Android 12+ בלבד.</string>
-
-    <string name="liquid_glass_unavailable">דורש Android 12 ומעלה</string>
-
     <string name="listen_as">האזן כ-</string>
 
     <string name="lyrics_debug_logs">יומני ניפוי שגיאות של מילים</string>

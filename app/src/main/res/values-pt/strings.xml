@@ -920,12 +920,6 @@
 
     <string name="legacy_mesh_gradient_subtitle">Traz de volta os tons suaves em movimento da v1.5</string>
 
-    <string name="liquid_glass">Vidro Líquido</string>
-
-    <string name="liquid_glass_subtitle">Efeito de vidro na barra de navegação. Requer Android 12+.</string>
-
-    <string name="liquid_glass_unavailable">Requer Android 12 ou superior</string>
-
     <string name="listen_as">Ouvir como</string>
 
     <string name="lyrics_debug_logs">Logs de depuração de letras</string>

@@ -96,7 +96,6 @@ fun HomeScreen(
     pullState: PullToRefreshState,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues,
-    title: String,
     signedIn: Boolean = true,
     onSignIn: (() -> Unit)? = null,
     /**
@@ -124,14 +123,6 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
         ) {
-            item {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                )
-            }
             if (!signedIn && onSignIn != null) {
                 item {
                     SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))

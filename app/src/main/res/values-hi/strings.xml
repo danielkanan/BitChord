@@ -915,12 +915,6 @@
 
     <string name="legacy_mesh_gradient_subtitle">v1.5 से प्लेयर के पीछे बहने वाले रंग लौटाएं</string>
 
-    <string name="liquid_glass">लिक्विड ग्लास</string>
-
-    <string name="liquid_glass_subtitle">नेविगेशन बार पर ग्लास प्रभाव। केवल Android 12+।</string>
-
-    <string name="liquid_glass_unavailable">Android 12 या नए की आवश्यकता है</string>
-
     <string name="listen_as">इस रूप में सुनें</string>
 
     <string name="lyrics_debug_logs">बोल डीबग लॉग</string>

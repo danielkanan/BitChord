@@ -5,12 +5,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -98,10 +103,19 @@ fun Modifier.thumbnailBorder(shape: Shape): Modifier = composed {
  * below them rather than stepping in from them. One constant, shared by the
  * bars and the pages, is what keeps that true.
  */
-val PAGE_GUTTER = 10.dp
+val PAGE_GUTTER = 18.dp
 
 /** Where a divider under a track row starts: clear of the 52dp of artwork. */
 val ROW_DIVIDER_INSET = PAGE_GUTTER + 68.dp
+
+/** Width of the track-index column on an album list. */
+val TRACK_NUMBER_WIDTH = 36.dp
+
+/** Gap between the index and the title on an album list. */
+private val TRACK_NUMBER_GAP = 12.dp
+
+/** Divider inset for numbered album rows — clear of the index, not artwork. */
+val NUMBERED_ROW_DIVIDER_INSET = PAGE_GUTTER + TRACK_NUMBER_WIDTH + TRACK_NUMBER_GAP
 
 /**
  * How wide the floating bars at the foot of the page — the tab bar and the mini
@@ -128,6 +142,43 @@ val FLOATING_BAR_MAX_WIDTH = 440.dp
  */
 val SHELF_CARD_WIDTH = 150.dp
 
+/** Three bouncing bars — the "this track is playing" mark on a song row. */
+@Composable
+private fun PlayingEqBars(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val motion = rememberInfiniteTransition(label = "playing_eq")
+    val bars = listOf(320, 480, 380).mapIndexed { index, duration ->
+        motion.animateFloat(
+            initialValue = 0.28f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(duration, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "eq_bar_$index",
+        )
+    }
+    Row(
+        modifier = modifier
+            .width(16.dp)
+            .height(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        bars.forEach { heightFraction ->
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(18.dp * heightFraction.value)
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(color),
+            )
+        }
+    }
+}
+
 /** A song title with the catalogue-standard outlined E for explicit audio. */
 @Composable
 fun ExplicitSongTitle(
@@ -135,27 +186,37 @@ fun ExplicitSongTitle(
     style: TextStyle,
     color: Color,
     modifier: Modifier = Modifier,
+    /** Tight badge for the mini player row, where labelSmall reads oversized. */
+    compactBadge: Boolean = false,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        if (song.isExplicit == true) {
-            Text(
-                text = "E",
-                style = MaterialTheme.typography.labelSmall,
-                color = color,
-                modifier = Modifier
-                    .border(1.dp, color.copy(alpha = 0.72f), RoundedCornerShape(2.dp))
-                    .padding(horizontal = 3.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-        }
         Text(
             text = song.title,
             style = style,
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f, fill = false),
         )
+        if (song.isExplicit == true) {
+            Spacer(Modifier.width(if (compactBadge) 4.dp else 6.dp))
+            Text(
+                text = "E",
+                style = if (compactBadge) {
+                    MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
+                } else {
+                    MaterialTheme.typography.labelSmall
+                },
+                color = color,
+                modifier = Modifier
+                    .border(
+                        width = if (compactBadge) 0.75.dp else 1.dp,
+                        color = color.copy(alpha = 0.72f),
+                        shape = RoundedCornerShape(if (compactBadge) 1.5.dp else 2.dp),
+                    )
+                    .padding(horizontal = if (compactBadge) 2.dp else 3.dp),
+            )
+        }
     }
 }
 
@@ -331,6 +392,8 @@ fun SongRow(
     activeTint: Color = MaterialTheme.colorScheme.primary,
     /** True while a Downloads row belongs to the current multi-selection. */
     selected: Boolean = false,
+    /** Album track lists hide the trailing time; feeds and playlists keep it. */
+    showDuration: Boolean = true,
 ) {
     val haptics = rememberHaptics()
     val swipeStateHolder = remember { mutableStateOf<SwipeToDismissBoxState?>(null) }
@@ -368,6 +431,7 @@ fun SongRow(
             isPlaying = isPlaying,
             activeTint = activeTint,
             selected = selected,
+            showDuration = showDuration,
         )
         return
     }
@@ -414,6 +478,7 @@ fun SongRow(
             isPlaying = isPlaying,
             activeTint = activeTint,
             selected = selected,
+            showDuration = showDuration,
         )
     }
 }
@@ -480,34 +545,43 @@ private fun SongRowContent(
     isPlaying: Boolean = false,
     activeTint: Color = MaterialTheme.colorScheme.primary,
     selected: Boolean = false,
+    showDuration: Boolean = true,
 ) {
-    val titleColor by animateColorAsState(
-        targetValue = if (isCurrent) activeTint else MaterialTheme.colorScheme.onBackground,
-        label = "song row title",
-    )
+    // Selection still washes the row; the playing track only swaps the index
+    // for the eq glyph — no accent tint on the title or the cell.
     val activeBackground by animateColorAsState(
-        targetValue = if (isCurrent || selected) activeTint.copy(alpha = 0.14f) else Color.Transparent,
+        targetValue = if (selected) activeTint.copy(alpha = 0.14f) else Color.Transparent,
         label = "song row background",
     )
+    val subtitle = listOfNotNull(
+        song.artist.takeIf { it.isNotBlank() },
+        song.downloadFormat,
+    ).joinToString(" · ")
+    // Album tracks that only show a title (no guest line) used to keep the
+    // full 52dp artwork slot and looked oddly airy — shrink that cell and the
+    // vertical pad so the change is visible.
+    val titleOnlyNumbered = trackNumber != null && subtitle.isBlank()
     Row(
         modifier = modifier
             .fillMaxWidth()
             .background(activeBackground)
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = PAGE_GUTTER, vertical = 4.dp),
+            .padding(
+                horizontal = PAGE_GUTTER,
+                vertical = if (titleOnlyNumbered) 2.dp else 4.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (trackNumber != null) {
-            // Same 52dp the artwork would take, so a numbered list and an
-            // illustrated one share a left edge and a divider inset.
-            Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
-                if (isCurrent) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Rounded.GraphicEq else Icons.Rounded.PlayArrow,
-                        contentDescription = stringResource(R.string.now_playing),
-                        tint = activeTint,
-                        modifier = Modifier.size(22.dp),
-                    )
+            // Narrower than the artwork slot — album indexes don't need 52dp.
+            Box(
+                modifier = Modifier
+                    .width(TRACK_NUMBER_WIDTH)
+                    .height(if (titleOnlyNumbered) 42.dp else 52.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isCurrent && isPlaying) {
+                    PlayingEqBars(color = subtitleColor)
                 } else {
                     Text(
                         text = "$trackNumber",
@@ -527,24 +601,26 @@ private fun SongRowContent(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
         }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
+        Spacer(Modifier.width(if (trackNumber != null) TRACK_NUMBER_GAP else 14.dp))
+        Column(modifier.weight(1f)) {
             ExplicitSongTitle(
                 song = song,
-                style = MaterialTheme.typography.titleMedium,
-                color = titleColor,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.W400,
+                    fontSize = 17.sp,
+                ),
+                color = MaterialTheme.colorScheme.onBackground,
             )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = listOfNotNull(
-                    song.artist.takeIf { it.isNotBlank() },
-                    song.downloadFormat,
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = subtitleColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = subtitleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (downloadedTint != null) {
             DownloadedBadge(song.videoId, downloadedTint)
@@ -558,22 +634,19 @@ private fun SongRowContent(
                 modifier = Modifier.size(20.dp),
             )
         }
-        if (isCurrent && trackNumber == null) {
+        if (isCurrent && isPlaying && trackNumber == null) {
             Spacer(Modifier.width(8.dp))
-            Icon(
-                imageVector = if (isPlaying) Icons.Rounded.GraphicEq else Icons.Rounded.PlayArrow,
-                contentDescription = stringResource(R.string.now_playing),
-                tint = activeTint,
-                modifier = Modifier.size(20.dp),
-            )
+            PlayingEqBars(color = subtitleColor)
         }
-        song.durationText?.let {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelMedium,
-                color = subtitleColor,
-            )
+        if (showDuration) {
+            song.durationText?.let {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = subtitleColor,
+                )
+            }
         }
         // Same sheet the long-press opens, for anyone who doesn't think to hold.
         if (onMore != null) {

@@ -14,10 +14,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,14 +53,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,15 +66,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
-import com.music.bitchord.BuildConfig
 import com.music.bitchord.R
 import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.settings.AppSettings
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.roundToInt
 
 /**
@@ -103,16 +94,13 @@ val TopBarContentGap = 12.dp
  * instead of running under what sits there.
  *
  * Only ever consumed through the larger of the two — see the title's padding.
- * They are kept apart rather than collapsed into one number because they
- * describe two different things, and the wordmark is the one that changes when
- * the logo or the Dev badge does.
  */
 private val BackInset = 54.dp
-private val WordmarkInset = 96.dp
+private val TitleInset = 24.dp
 private val ActionsInset = 56.dp
 
-/** What the leading end of the bar needs: a back button, or the wordmark. */
-private fun leadingInset(hasBack: Boolean): Dp = if (hasBack) BackInset else WordmarkInset
+/** What the leading end of the bar needs: a back button, or room for the title. */
+private fun leadingInset(hasBack: Boolean): Dp = if (hasBack) BackInset else TitleInset
 
 /**
  * How far down the window the bar actually ends: the status bar inset it is
@@ -139,14 +127,13 @@ fun topBarContentPadding(): Dp = topBarHeight() + TopBarContentGap
  * The top bar's content — title, back affordance, actions — over no blur of its
  * own.
  *
- * Ordinary pages put [TopBarBlur] underneath it and use this bar's lower
- * hairline to finish that bounded pane. Replay, album, playlist and artist
- * pages set [transparentBackdrop], as does every page while Liquid Glass is
- * active, so the shared top gradient remains unobstructed.
+ * Floating chrome is always separated (logo / back circle + action pill) with
+ * a transparent bar so the shared top gradient remains unobstructed. Surfaces
+ * use the same frosted Haze material as the nav bar.
  *
- * The exception is Reduce dynamic blur, where a bounded bar fills itself solid
- * instead. A [transparentBackdrop] page remains transparent because the
- * app-level gradient already carries its floating controls.
+ * The exception is Reduce dynamic blur, where floating controls fill solid
+ * instead. The bar itself stays transparent because the app-level gradient
+ * already carries those controls.
  *
  * Apple Music behaviour: the big in-list header owns the title at rest;
  * once the list scrolls, the small centered title fades in.
@@ -171,8 +158,8 @@ fun FrostedTopBar(
     actions: @Composable () -> Unit = {},
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val useFloatingChrome = artworkPageChrome ||
-        (LocalLiquidGlassEnabled.current && isGlassSupported())
+    // Always the separated floating controls — same layout the glass chrome used.
+    val useFloatingChrome = true
     val titleAlpha by animateFloatAsState(
         targetValue = if (scrolled || trailingTitle != null) 1f else 0f,
         animationSpec = tween(220),
@@ -206,12 +193,40 @@ fun FrostedTopBar(
                 .statusBarsPadding()
                 .height(TopBarContentHeight),
         ) {
-            /* Temporarily hidden: keep the scrolling center-title implementation
-             * intact so it can be restored without rebuilding its transitions.
-             *
-            // Artwork pages keep their large in-page heading and never create a
-            // duplicate title in the status bar, including in accessibility.
+            // On a pushed page the back affordance is always visible, since
+            // there is no large in-list header to fall back on.
+            if (onBack != null) {
+                if (useFloatingChrome) {
+                    ArtworkPageBackButton(
+                        onClick = onBack,
+                        hazeState = backButtonHazeState,
+                        // The surface edge aligns with the floating navbar. The
+                        // padding belongs outside the circle; its icon remains
+                        // centred in the same 44dp control in every material.
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = PAGE_GUTTER),
+                    )
+                } else {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+
+            // Root tabs: page title lives here (Listen Now / Explore / …).
+            // Pushed pages: the small title fades in once the large in-page
+            // heading has scrolled away. Artwork-led pages keep their own
+            // heading and stay empty in the bar.
             if (!artworkPageChrome) {
+                val rootTitle = onBack == null
                 AnimatedContent(
                     targetState = trailingTitle,
                     transitionSpec = {
@@ -220,18 +235,13 @@ fun FrostedTopBar(
                     },
                     label = "topBarTitleAnimation",
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        // Reserve room for whatever flanks the title — and reserve
-                        // the *same* room on both sides. Equal is the whole point:
-                        // the title is centered within this padded box, so an inset
-                        // that differs end to end moves it off the bar's centre by
-                        // half that difference. Reserving what each side actually
-                        // needs (96dp for the wordmark, 56dp for the actions) put
-                        // every root tab's title 20dp right of centre, which is
-                        // visible against a status bar clock that is not.
-                        .padding(horizontal = max(leadingInset(onBack != null), ActionsInset))
+                        .align(if (rootTitle) Alignment.CenterStart else Alignment.Center)
+                        .padding(
+                            start = if (rootTitle) PAGE_GUTTER else max(leadingInset(onBack != null), ActionsInset),
+                            end = if (rootTitle) ActionsInset + PAGE_GUTTER else max(leadingInset(onBack != null), ActionsInset),
+                        )
                         .fillMaxWidth()
-                        .graphicsLayer { alpha = titleAlpha },
+                        .graphicsLayer { alpha = if (rootTitle) 1f else titleAlpha },
                 ) { trailing ->
                     if (trailing != null) {
                         Row(
@@ -263,73 +273,17 @@ fun FrostedTopBar(
                     } else {
                         Text(
                             text = title,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = if (rootTitle) {
+                                MaterialTheme.typography.titleLarge
+                            } else {
+                                MaterialTheme.typography.titleMedium
+                            },
+                            fontWeight = if (rootTitle) FontWeight.Bold else FontWeight.Normal,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
+                            textAlign = if (rootTitle) TextAlign.Start else TextAlign.Center,
                             modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-             */
-            // On a pushed page the back affordance is always visible, since
-            // there is no large in-list header to fall back on.
-            if (onBack != null) {
-                if (useFloatingChrome) {
-                    ArtworkPageBackButton(
-                        onClick = onBack,
-                        hazeState = backButtonHazeState,
-                        // The surface edge aligns with the floating navbar. The
-                        // padding belongs outside the circle; its icon remains
-                        // centred in the same 44dp control in every material.
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = PAGE_GUTTER),
-                    )
-                } else {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(R.string.back),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-            } else if (useFloatingChrome) {
-                FloatingAppMark(
-                    hazeState = backButtonHazeState,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = PAGE_GUTTER),
-                )
-            } else {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_logo),
-                        contentDescription = null,
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-                        modifier = Modifier.height(18.dp),
-                    )
-                    // The dev flavor gets its own applicationId so it can sit
-                    // installed next to the prod build; this badge is the
-                    // in-app equivalent, so the two are never mixed up at a
-                    // glance once both are running.
-                    if (BuildConfig.FLAVOR == "dev") {
-                        Text(
-                            text = "Dev",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 6.dp),
                         )
                     }
                 }
@@ -360,51 +314,7 @@ fun FrostedTopBar(
     }
 }
 
-/** Root-page app mark: a navbar-matched logo circle plus an external Dev badge. */
-@OptIn(ExperimentalHazeMaterialsApi::class)
-@Composable
-private fun FloatingAppMark(
-    hazeState: HazeState?,
-    modifier: Modifier = Modifier,
-) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val useLiquidGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
-    val contentColor = if (useLiquidGlass && !reduceDynamicBlur) {
-        glassContentColor()
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .then(artworkPageSurface(shape = CircleShape, hazeState = hazeState)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.ic_logo),
-                contentDescription = null,
-                colorFilter = ColorFilter.tint(contentColor),
-                modifier = Modifier.size(width = 24.dp, height = 16.dp),
-            )
-        }
-        if (BuildConfig.FLAVOR == "dev") {
-            Text(
-                text = "Dev",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 6.dp),
-            )
-        }
-    }
-}
-
 /** Circular floating back affordance, material-matched to the navbar. */
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun ArtworkPageBackButton(
     onClick: () -> Unit,
@@ -412,13 +322,7 @@ private fun ArtworkPageBackButton(
     modifier: Modifier = Modifier,
 ) {
     val shape = CircleShape
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val useLiquidGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
-    val contentColor = if (useLiquidGlass && !reduceDynamicBlur) {
-        glassContentColor()
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
+    val contentColor = frostChromeColors().content
 
     IconButton(
         onClick = onClick,
@@ -486,48 +390,21 @@ private fun Modifier.artworkActionEdgePadding(): Modifier = layout { measurable,
 }
 
 /** The navbar's exact material choice, reusable by every floating top control. */
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 private fun artworkPageSurface(
     shape: CornerBasedShape,
     hazeState: HazeState?,
-): Modifier {
-    val container = MaterialTheme.colorScheme.surface
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val useLiquidGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
-
-    return Modifier
-        .clip(shape)
-        .then(
-            when {
-                useLiquidGlass -> Modifier.liquidGlass(shape)
-                reduceDynamicBlur || hazeState == null -> Modifier.background(container)
-                else -> Modifier.optimizedHazeEffect(
-                    state = hazeState,
-                    style = HazeMaterials.regular(container),
-                )
-            },
-        )
-        // Keep the same explicit hairline as FloatingBottomBar. Liquid glass
-        // also has its refractive highlight, but the navbar retains this edge
-        // so these surfaces do as well.
-        .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
-}
+): Modifier = Modifier.frostedSurface(shape = shape, hazeState = hazeState)
 
 /**
  * The account affordance at the right end of the bar.
  *
- * It is the signed-in Google account's own photo — the same one YouTube Music
- * shows there — and tapping it opens Settings, where the account lives. Signed
- * out, or before the account menu has come back, it falls back to a person
- * glyph on a filled circle so the tap target never disappears.
- *
- * The hairline ring is what keeps a photo with light edges from dissolving into
- * the bar's glass; it is the same one thumbnails elsewhere carry.
+ * Same vertical ⋮ as album/playlist overflow — taps open the account switcher
+ * (or Settings when signed out). Vertical swipe still steps profiles.
  */
 @Composable
 fun TopBarAccountButton(
-    account: Account?,
+    @Suppress("UNUSED_PARAMETER") account: Account?,
     onClick: () -> Unit,
     onSwipeProfile: ((forward: Boolean) -> Boolean)? = null,
     modifier: Modifier = Modifier,
@@ -555,34 +432,11 @@ fun TopBarAccountButton(
                 )
             },
     ) {
-        val photo = account?.thumbnailUrl
-        if (photo != null) {
-            AsyncImage(
-                model = photo,
-                contentDescription = stringResource(R.string.switch_account),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(AVATAR_SIZE)
-                    .clip(CircleShape)
-                    .thumbnailBorder(CircleShape),
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(AVATAR_SIZE)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .thumbnailBorder(CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Rounded.Person,
-                    contentDescription = stringResource(R.string.switch_account),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
+        Icon(
+            Icons.Rounded.MoreVert,
+            contentDescription = stringResource(R.string.switch_account),
+            tint = frostChromeColors().content,
+        )
     }
 }
 
@@ -666,11 +520,3 @@ private val PUCK_REST = 16.dp
 
 /** Headroom for the damped travel past the threshold. */
 private val PUCK_OVERSHOOT = 20.dp
-
-/**
- * The account photo's diameter.
- *
- * Smaller than an icon's 24dp box: a filled circle carries more weight than a
- * glyph does, and at 24 it sat heavier in the bar than the wordmark opposite it.
- */
-private val AVATAR_SIZE = 28.dp

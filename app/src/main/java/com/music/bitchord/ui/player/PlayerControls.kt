@@ -1169,16 +1169,12 @@ internal fun MarqueeText(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     startDelayMillis: Long = 0L,
-    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
     onOverflowChange: (Boolean) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        if (leading != null) {
-            leading()
-            Spacer(Modifier.width(6.dp))
-        }
         if (!enabled) {
             Text(
                 text = text,
@@ -1188,6 +1184,10 @@ internal fun MarqueeText(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
+            if (trailing != null) {
+                Spacer(Modifier.width(6.dp))
+                trailing()
+            }
             return@Row
         }
         BoxWithConstraints(Modifier.weight(1f, fill = false).clipToBounds()) {
@@ -1239,6 +1239,10 @@ internal fun MarqueeText(
                     MarqueeLine(text = text, style = style, color = color)
                 }
             }
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(6.dp))
+            trailing()
         }
     }
 }

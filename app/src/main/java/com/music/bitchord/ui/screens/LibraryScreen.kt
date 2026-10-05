@@ -135,14 +135,6 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
         ) {
-            item {
-                Text(
-                    text = stringResource(R.string.library),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                )
-            }
             // Drawn whether or not anything has been played: with nothing behind
             // it the page still has to say the feature exists, or the only way
             // to discover it is to have already used it.

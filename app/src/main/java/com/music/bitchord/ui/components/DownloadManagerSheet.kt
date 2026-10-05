@@ -93,10 +93,11 @@ fun TopBarDownloadButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         label = "downloadRingProgress",
     )
     val failed = session.failed > 0
+    val chrome = frostChromeColors()
     val tint by animateColorAsState(
         targetValue = when {
             failed -> MaterialTheme.colorScheme.error
-            else -> MaterialTheme.colorScheme.primary
+            else -> chrome.accent
         },
         animationSpec = tween(220),
         label = "downloadRingTint",

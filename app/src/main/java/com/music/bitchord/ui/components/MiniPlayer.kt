@@ -6,6 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,100 +18,62 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.settings.AppSettings
-import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
-/**
- * The transport buttons' touch target. Material's default 48dp is what a bar
- * this slim is really made of, so it sets the height on its own.
- */
-private val GLYPH_SLOT = 40.dp
+/** Shared touch target for play and next — independent of artwork height. */
+private val GLYPH_SLOT = 36.dp
 
-/**
- * The play and skip glyphs themselves.
- *
- * Deliberately grown inside [GLYPH_SLOT] rather than by growing the slot: the
- * slot is level with the 40dp artwork opposite it, and it is the taller of the
- * two that sets the row's height — so a bigger slot would make the whole bar
- * taller, which is not what a bigger glyph is being asked for. At 32 there is
- * still 4dp of clearance to the slot's edge on every side.
- */
+/** Play / pause / next glyph size inside [GLYPH_SLOT]. */
 private val GLYPH_SIZE = 32.dp
 
 /** The spinner that stands in for the play glyph, kept in proportion to it. */
 private val SPINNER_SIZE = 22.dp
 
-/**
- * The gap between the two transport controls.
- *
- * Material asks for at least 8dp between adjacent touch targets, and these had
- * none: two [GLYPH_SLOT] boxes sharing an edge, so the boundary between "pause"
- * and "skip" was a line with nothing either side of it. What space there looked
- * to be was only the margin each glyph keeps inside its own slot, and a thumb
- * lands on a target's edge far more often than it lands on a glyph's.
- *
- * Taken from the title's width rather than the bar's height, so nothing above
- * or below it moves.
- */
-private val TRANSPORT_GAP = 8.dp
+/** Gap between the two transport controls. */
+private val TRANSPORT_GAP = 2.dp
 
-/**
- * Vertical padding, which with the 40dp artwork sets the bar's height at 56dp
- * and so its pill radius at 28.
- */
-private val ROW_PADDING_VERTICAL = 8.dp
+/** Vertical padding — modest so the bar stays compact. */
+private val ROW_PADDING_VERTICAL = 5.dp
 
-/**
- * Horizontal padding, deliberately larger than the vertical.
- *
- * A pill's ends are semicircles, so the edge nearest the artwork is not the
- * one beside it but the one curving away above and below it. At the artwork's
- * top corner that edge has already come 8.4dp in from the left — level with
- * where square corners would have put the whole side. Padding the ends by the
- * vertical figure would leave the artwork touching the curve; 12 clears it
- * with room, and reads as centred rather than jammed into the round.
- */
-private val ROW_PADDING_HORIZONTAL = 12.dp
+/** Horizontal padding so artwork clears the pill's curved ends. */
+private val ROW_PADDING_HORIZONTAL = 16.dp
 
-/**
- * The artwork's corner, on the 8dp every other thumbnail in the app carries.
- *
- * It used to be 7, picked so the bar's corner could sit concentric with it.
- * A pill has no corner to be concentric with — its radius is whatever half the
- * height happens to be — so that constraint is gone and the artwork can go
- * back to matching [SongRow].
- */
-private val ART_CORNER = 8.dp
+/** The artwork's corner radius. */
+private val ART_CORNER = 6.dp
+
+/** Matches the tight title (16sp) + artist (14sp) line stack. */
+private val ART_SIZE = 30.dp
 
 /** Distance that makes a horizontal drag an intentional track change. */
 private val TRACK_SWIPE_THRESHOLD = 72.dp
@@ -175,6 +140,7 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val chrome = frostChromeColors()
     val haptics = rememberHaptics()
     // percent rather than a dp figure, so the corner stays exactly half the
     // height if the row's contents ever change it — which is what keeps a pill
@@ -187,15 +153,15 @@ fun MiniPlayer(
             .clip(shape)
             .then(
                 if (reduceDynamicBlur) {
-                    Modifier.background(MaterialTheme.colorScheme.surface)
+                    Modifier.background(chrome.tint)
                 } else {
                     Modifier.optimizedHazeEffect(
                         state = hazeState,
-                        style = HazeMaterials.thin(MaterialTheme.colorScheme.surface),
+                        style = HazeMaterials.thin(chrome.tint),
                     )
                 },
             )
-            .border(0.5.dp, Color.White.copy(alpha = 0.10f), shape)
+            .border(GLASS_EDGE_WIDTH, chrome.edge, shape)
             // Deliberately silent: the whole bar is the target, so it catches
             // stray taps meant for the page behind it, and the sheet rising is
             // its own confirmation. The glyphs on it still buzz.
@@ -222,26 +188,50 @@ fun MiniPlayer(
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val tightLines = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.Both,
+            )
+            val titleStyle = MaterialTheme.typography.titleSmall.copy(
+                lineHeight = 16.sp,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                lineHeightStyle = tightLines,
+            )
+            val artistStyle = MaterialTheme.typography.bodySmall.copy(
+                lineHeight = 14.sp,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                lineHeightStyle = tightLines,
+            )
+            val artShape = RoundedCornerShape(ART_CORNER)
+            val artHighlight = if (isSystemInDarkTheme()) {
+                Color.White.copy(alpha = 0.08f)
+            } else {
+                Color.Black.copy(alpha = 0.08f)
+            }
             AsyncImage(
                 model = rememberRemoteArtworkUrl(song)?.artworkAt(ROW_ART_PX),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(ART_CORNER))
-                    .thumbnailBorder(RoundedCornerShape(ART_CORNER))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .size(ART_SIZE)
+                    .clip(artShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(0.5.dp, artHighlight, artShape),
             )
             Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center,
+            ) {
                 ExplicitSongTitle(
                     song = song,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    style = titleStyle,
+                    color = chrome.content,
+                    compactBadge = true,
                 )
                 Text(
                     text = song.artist,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = artistStyle,
+                    color = chrome.contentVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -249,23 +239,31 @@ fun MiniPlayer(
             if (isLoading) {
                 Box(Modifier.size(GLYPH_SLOT), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.onBackground,
+                        color = chrome.content,
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(SPINNER_SIZE),
                     )
                 }
             } else {
-                IconButton(
-                    onClick = {
-                        haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
-                        onPlayPause()
-                    },
-                    modifier = Modifier.size(GLYPH_SLOT),
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(GLYPH_SLOT)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
+                                onPlayPause()
+                            },
+                        ),
                 ) {
                     Icon(
-                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        painter = painterResource(
+                            if (isPlaying) R.drawable.ic_player_pause else R.drawable.ic_player_play,
+                        ),
                         contentDescription = stringResource(if (isPlaying) R.string.pause else R.string.play),
-                        tint = MaterialTheme.colorScheme.onBackground,
+                        tint = chrome.content,
                         modifier = Modifier.size(GLYPH_SIZE),
                     )
                 }
@@ -273,20 +271,27 @@ fun MiniPlayer(
             Spacer(Modifier.width(TRANSPORT_GAP))
             // Faded and inert rather than removed while the host holds the
             // controls, so the bar keeps its shape — see [controlsLocked].
-            IconButton(
-                onClick = {
-                    haptics.play(Haptic.SkipNext)
-                    onNext()
-                },
-                enabled = !controlsLocked,
-                modifier = Modifier.size(GLYPH_SLOT),
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(GLYPH_SLOT)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = !controlsLocked,
+                        onClick = {
+                            haptics.play(Haptic.SkipNext)
+                            onNext()
+                        },
+                    ),
             ) {
                 Icon(
-                    Icons.Rounded.SkipNext,
+                    painter = painterResource(R.drawable.ic_player_next),
                     contentDescription = stringResource(R.string.widget_next),
-                    tint = MaterialTheme.colorScheme.onBackground
-                        .copy(alpha = if (controlsLocked) 0.3f else 1f),
-                    modifier = Modifier.size(GLYPH_SIZE),
+                    tint = chrome.content.copy(alpha = if (controlsLocked) 0.3f else 1f),
+                    modifier = Modifier
+                        .size(GLYPH_SIZE)
+                        .graphicsLayer { scaleY = 0.85f },
                 )
             }
         }

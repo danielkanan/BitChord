@@ -237,9 +237,6 @@
     <string name="reduce_animation_subtitle">Cố định dải màu của trình phát thay vì chuyển động</string>
     <string name="reduce_dynamic_blur">Giảm độ mờ động</string>
     <string name="reduce_dynamic_blur_subtitle">Dùng màu nền đặc thay cho hiệu ứng kính mờ trong toàn bộ ứng dụng</string>
-    <string name="liquid_glass">Kính lỏng (Liquid Glass)</string>
-    <string name="liquid_glass_subtitle">Hiệu ứng kính khúc xạ trên thanh điều hướng nổi. Chỉ dành cho Android 12+; sử dụng nhiều GPU hơn.</string>
-    <string name="liquid_glass_unavailable">Yêu cầu Android 12 trở lên</string>
     <string name="full_screen_cover_art">Ảnh bìa toàn màn hình</string>
     <string name="legacy_mesh_gradient">Dải màu lưới kiểu cũ</string>
     <string name="legacy_mesh_gradient_subtitle">Mang lại các đốm màu chuyển động phía sau trình phát từ phiên bản 1.5</string>

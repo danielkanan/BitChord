@@ -1010,12 +1010,6 @@
 
     <string name="legacy_mesh_gradient_subtitle">v1.5 のプレーヤー背面の流れるカラー アニメーションを復元します</string>
 
-    <string name="liquid_glass">リキッド グラス</string>
-
-    <string name="liquid_glass_subtitle">フローティング ナビゲーション バーの屈折ガラス効果。Android 12 以降のみ。</string>
-
-    <string name="liquid_glass_unavailable">Android 12 以降が必要です</string>
-
     <string name="playing_radio">%1$s ラジオを再生中</string>
 
     <string name="playlist_action">プレイリスト</string>

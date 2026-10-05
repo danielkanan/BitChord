@@ -116,7 +116,7 @@ fun LyricsSourcesDialog(
                     } else {
                         Modifier.optimizedHazeEffect(
                             state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
+                            style = HazeMaterials.regular(FROST_TINT),
                         )
                     },
                 )
