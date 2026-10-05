@@ -7,19 +7,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
@@ -68,7 +63,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,6 +80,7 @@ import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.ui.theme.ArtworkPalette
 import com.music.bitchord.ui.theme.rememberArtworkPalette
+import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -112,11 +107,10 @@ import java.util.Locale
  * has. Starting one might: below API 29 it needs a storage permission that only
  * an Activity can ask for.
  *
- * The sheet is painted in the track's own colours, the same way its album page
- * is — it is opened *from* that artwork, usually with it still on screen behind
- * the scrim, and a slab of flat grey in front of a coloured page reads as
- * something borrowed from another app. The host supplies no container colour
- * and no drag handle; both are drawn here, over the tint.
+ * The sheet is frosted like the floating chrome — artwork-tinted fill, hairline
+ * edge, real Haze when the host can sample the page behind it — rather than a
+ * painted wash that only *looked* like blur. The host supplies no container
+ * colour and no drag handle; both are drawn here over the frost.
  */
 @Composable
 fun SongActionsSheet(
@@ -140,6 +134,15 @@ fun SongActionsSheet(
     onOpenAlbum: (String) -> Unit,
     onOpenArtist: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Same [HazeState] the page chrome samples, when the sheet can see it. */
+    hazeState: HazeState? = null,
+    /**
+     * Sleeve of the page this menu was opened from (artist / album /
+     * playlist). When set, the frost and accents follow that page instead of
+     * the track's own cover — so a song drawer on an artist page stays in the
+     * artist wash rather than flashing each album's colour.
+     */
+    pagePalette: ArtworkPalette? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     showSleepTimer: Boolean = false,
     /**
@@ -186,21 +189,23 @@ fun SongActionsSheet(
     resolvingLinks: Boolean = false,
 ) {
     var pickingSleepTimer by remember { mutableStateOf(false) }
-    // Read from the thumbnail the row that opened this sheet was already
-    // showing, not a larger copy of it: the tint is a blur and a handful of
-    // swatches, neither of which a bigger image improves, and going back for
-    // one is what had the sheet opening grey and colouring in afterwards.
-    val palette = rememberArtworkPalette(song.thumbnailUrl, artPx = ROW_ART_PX)
+    // Prefer the page sleeve when the host has one (artist / album / playlist);
+    // otherwise read from the thumbnail the row was already showing — not a
+    // larger copy: the tint is a blur and a handful of swatches, neither of
+    // which a bigger image improves, and going back for one is what had the
+    // sheet opening grey and colouring in afterwards.
+    val songPalette = rememberArtworkPalette(song.thumbnailUrl, artPx = ROW_ART_PX)
+    val palette = pagePalette ?: songPalette
     val liked = likeStatus == LikeStatus.LIKE
     val disliked = likeStatus == LikeStatus.DISLIKE
     // A local file or a finished download has no YouTube identity behind it to
     // rate, save, queue into a playlist, fetch again, or share a link for.
     val isOffline = song.localUri != null
 
-    TintedSheet(palette = palette, imageUrl = song.thumbnailUrl, modifier = modifier) {
+    FrostedSheet(hazeState = hazeState, palette = palette, modifier = modifier) {
         if (pickingSleepTimer) {
             SleepTimerPicker(palette = palette, onBack = { pickingSleepTimer = false })
-            return@TintedSheet
+            return@FrostedSheet
         }
 
         SheetTrackHeader(song, subtitleColor = palette.onBackgroundVariant)
@@ -362,77 +367,9 @@ fun SongActionsSheet(
         onCopyLog?.let {
             ActionRow(Icons.Rounded.BugReport, stringResource(R.string.copy_log), accent = palette.accent, onClick = it)
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
     }
 }
-
-/**
- * A bottom sheet wearing the artwork's colours: the tint and its blurred wash
- * behind, the rounded top corners and the drag handle drawn over it.
- *
- * The corners and the handle are this composable's job rather than
- * `ModalBottomSheet`'s because the host has to pass a transparent container for
- * the wash to be visible at all — and a transparent container has nothing left
- * to clip or to hang a handle on.
- *
- * The row list is capped to a fraction of the screen and scrolls internally.
- * Left unbounded, a track with every optional row present — playlist removal,
- * revert, share, the log — runs past the bottom of the screen with no way to
- * reach what's cut off: a plain Column neither scrolls nor shrinks, so the
- * sheet just grows past the window and sits there stuck at full height.
- */
-@Composable
-private fun TintedSheet(
-    palette: ArtworkPalette,
-    imageUrl: String?,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.85f
-    Box(
-        modifier
-            .fillMaxWidth()
-            .clip(SHEET_SHAPE),
-    ) {
-        ArtworkBackdrop(
-            palette = palette,
-            imageUrl = imageUrl,
-            modifier = Modifier.matchParentSize(),
-            // A sheet is a fraction of the height of a page, so the wash has
-            // to resolve over a much shorter run to read the same way.
-            washFraction = 0.75f,
-            artPx = ROW_ART_PX,
-        )
-        Column(Modifier.fillMaxWidth().heightIn(max = maxHeight)) {
-            // Drawn rather than taken from BottomSheetDefaults, whose handle
-            // carries 22dp of padding on each side — half a row's worth of
-            // nothing between the grip and the track it is about. Kept outside
-            // the scrolling rows below so it stays put as a grab target rather
-            // than travelling with the list.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier
-                        .size(width = 34.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(palette.onBackground.copy(alpha = 0.35f)),
-                )
-            }
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                content = content,
-            )
-        }
-    }
-}
-
-private val SHEET_SHAPE = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 
 /**
  * One row carrying the whole life of a download: start it, watch it, cancel it,
@@ -716,10 +653,13 @@ internal fun ActionRow(
     label: String,
     value: String? = null,
     tint: Color? = null,
-    accent: Color = MaterialTheme.colorScheme.primary,
+    accent: Color? = null,
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val chrome = frostChromeColors()
+    val content = chrome.content
+    val valueAccent = accent ?: chrome.accent
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -730,7 +670,7 @@ internal fun ActionRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = (tint ?: MaterialTheme.colorScheme.onBackground).copy(
+            tint = (tint ?: content).copy(
                 alpha = if (enabled) 1f else 0.4f,
             ),
             modifier = Modifier.size(22.dp),
@@ -739,7 +679,7 @@ internal fun ActionRow(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground.copy(
+            color = content.copy(
                 alpha = if (enabled) 1f else 0.4f,
             ),
             modifier = Modifier.weight(1f),
@@ -749,7 +689,7 @@ internal fun ActionRow(
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyLarge,
-                color = accent.copy(alpha = if (enabled) 1f else 0.4f),
+                color = valueAccent.copy(alpha = if (enabled) 1f else 0.4f),
                 maxLines = 1,
             )
         }
@@ -804,8 +744,9 @@ private fun LoadingActionRow(icon: ImageVector, label: String, palette: ArtworkP
 internal fun SheetTrackHeader(
     song: Song,
     modifier: Modifier = Modifier,
-    subtitleColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    subtitleColor: Color? = null,
 ) {
+    val chrome = frostChromeColors()
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -819,19 +760,19 @@ internal fun SheetTrackHeader(
                 .size(52.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .thumbnailBorder(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(chrome.tint.copy(alpha = 0.55f)),
         )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             ExplicitSongTitle(
                 song = song,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = chrome.content,
             )
             Text(
                 text = song.artist,
                 style = MaterialTheme.typography.bodyMedium,
-                color = subtitleColor,
+                color = subtitleColor ?: chrome.contentVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -842,10 +783,11 @@ internal fun SheetTrackHeader(
 /** The heading over a sheet's second half — "Add to playlist". */
 @Composable
 internal fun SheetHeading(text: String) {
+    val chrome = frostChromeColors()
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = chrome.contentVariant,
         modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 16.dp, bottom = 4.dp),
     )
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -121,6 +122,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
+import com.music.bitchord.ui.components.FrostedSheet
+import com.music.bitchord.ui.components.frostChromeColors
 import com.music.bitchord.ui.components.languageDisplayNameRes
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.SearchField
@@ -1363,60 +1366,72 @@ fun SettingsScreen(
     picking?.let { target ->
         ModalBottomSheet(
             onDismissRequest = { picking = null },
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = Color.Transparent,
+            dragHandle = null,
+            contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         ) {
-            QualitySheet(
-                target = target,
-                selected = when (target) {
-                    QualityTarget.WIFI -> wifiQuality
-                    QualityTarget.CELLULAR -> cellularQuality
-                },
-                // Writes the one ceiling that was being edited and nothing
-                // else. There used to be a `SourceRegistry.applyQualityPreset`
-                // call here that flipped the module and JioSaavn switches to
-                // match — which meant budgeting *mobile data* switched those
-                // sources off while sitting on Wi-Fi, and coming back to Wi-Fi
-                // never switched them on again. Which sources a rung consults
-                // is now read per stream off the connection in force; see
-                // [AudioQuality.permits].
-                onSelect = { quality ->
-                    when (target) {
-                        QualityTarget.WIFI -> AppSettings.setAudioQualityWifi(quality)
-                        QualityTarget.CELLULAR -> AppSettings.setAudioQualityCellular(quality)
-                    }
-                    picking = null
-                },
-            )
+            FrostedSheet(hazeState = null) {
+                QualitySheet(
+                    target = target,
+                    selected = when (target) {
+                        QualityTarget.WIFI -> wifiQuality
+                        QualityTarget.CELLULAR -> cellularQuality
+                    },
+                    // Writes the one ceiling that was being edited and nothing
+                    // else. There used to be a `SourceRegistry.applyQualityPreset`
+                    // call here that flipped the module and JioSaavn switches to
+                    // match — which meant budgeting *mobile data* switched those
+                    // sources off while sitting on Wi-Fi, and coming back to Wi-Fi
+                    // never switched them on again. Which sources a rung consults
+                    // is now read per stream off the connection in force; see
+                    // [AudioQuality.permits].
+                    onSelect = { quality ->
+                        when (target) {
+                            QualityTarget.WIFI -> AppSettings.setAudioQualityWifi(quality)
+                            QualityTarget.CELLULAR -> AppSettings.setAudioQualityCellular(quality)
+                        }
+                        picking = null
+                    },
+                )
+            }
         }
     }
 
     if (pickingDownloadQuality) {
         ModalBottomSheet(
             onDismissRequest = { pickingDownloadQuality = false },
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = Color.Transparent,
+            dragHandle = null,
+            contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         ) {
-            DownloadQualitySheet(
-                selected = downloadQuality,
-                onSelect = { quality ->
-                    AppSettings.setDownloadQuality(quality)
-                    pickingDownloadQuality = false
-                },
-            )
+            FrostedSheet(hazeState = null) {
+                DownloadQualitySheet(
+                    selected = downloadQuality,
+                    onSelect = { quality ->
+                        AppSettings.setDownloadQuality(quality)
+                        pickingDownloadQuality = false
+                    },
+                )
+            }
         }
     }
 
     if (pickingAutomixPerformance) {
         ModalBottomSheet(
             onDismissRequest = { pickingAutomixPerformance = false },
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = Color.Transparent,
+            dragHandle = null,
+            contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         ) {
-            AutomixPerformanceSheet(
-                selected = automixPerformance,
-                onSelect = { mode ->
-                    AppSettings.setAutomixPerformanceMode(mode)
-                    pickingAutomixPerformance = false
-                },
-            )
+            FrostedSheet(hazeState = null) {
+                AutomixPerformanceSheet(
+                    selected = automixPerformance,
+                    onSelect = { mode ->
+                        AppSettings.setAutomixPerformanceMode(mode)
+                        pickingAutomixPerformance = false
+                    },
+                )
+            }
         }
     }
 
@@ -1771,7 +1786,8 @@ private fun QualitySheet(
     selected: AudioQuality,
     onSelect: (AudioQuality) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+    val chrome = frostChromeColors()
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Row(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1779,7 +1795,7 @@ private fun QualitySheet(
             Icon(
                 imageVector = target.icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = chrome.content,
                 modifier = Modifier.size(22.dp),
             )
             Spacer(Modifier.width(14.dp))
@@ -1787,7 +1803,7 @@ private fun QualitySheet(
                 Text(
                     text = stringResource(R.string.audio_quality),
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = chrome.content,
                 )
                 Text(
                     text = stringResource(
@@ -1795,11 +1811,11 @@ private fun QualitySheet(
                         target.localizedTitle().lowercase(Locale.getDefault()),
                     ),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = chrome.contentVariant,
                 )
             }
         }
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(thickness = 0.5.dp, color = chrome.edge.copy(alpha = 0.55f))
 
         // Best first — the option most people want shouldn't be last.
         AudioQuality.entries.reversed().forEach { quality ->
@@ -1815,12 +1831,12 @@ private fun QualitySheet(
                     Text(
                         text = quality.localizedLabel(),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
+                        color = chrome.content,
                     )
                     Text(
                         text = stringResource(R.string.quality_hourly, quality.detail, quality.hourly),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = chrome.contentVariant,
                     )
                 }
                 if (chosen) {
@@ -1828,7 +1844,7 @@ private fun QualitySheet(
                     Icon(
                         Icons.Rounded.Check,
                         contentDescription = stringResource(R.string.selected),
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = chrome.accent,
                         modifier = Modifier.size(22.dp),
                     )
                 }
@@ -1843,7 +1859,8 @@ private fun AutomixPerformanceSheet(
     selected: AutomixPerformanceMode,
     onSelect: (AutomixPerformanceMode) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+    val chrome = frostChromeColors()
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Row(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1851,7 +1868,7 @@ private fun AutomixPerformanceSheet(
             Icon(
                 imageVector = Icons.Rounded.Tune,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = chrome.content,
                 modifier = Modifier.size(22.dp),
             )
             Spacer(Modifier.width(14.dp))
@@ -1859,16 +1876,16 @@ private fun AutomixPerformanceSheet(
                 Text(
                     text = stringResource(R.string.automix_performance),
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = chrome.content,
                 )
                 Text(
                     text = stringResource(R.string.automix_performance_warning),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = chrome.contentVariant,
                 )
             }
         }
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(thickness = 0.5.dp, color = chrome.edge.copy(alpha = 0.55f))
         AutomixPerformanceMode.entries.forEach { mode ->
             val chosen = mode == selected
             Row(
@@ -1882,7 +1899,7 @@ private fun AutomixPerformanceSheet(
                     Text(
                         text = mode.localizedLabel(),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
+                        color = chrome.content,
                     )
                     Text(
                         text = stringResource(
@@ -1893,7 +1910,7 @@ private fun AutomixPerformanceSheet(
                             },
                         ),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = chrome.contentVariant,
                     )
                 }
                 if (chosen) {
@@ -1901,7 +1918,7 @@ private fun AutomixPerformanceSheet(
                     Icon(
                         Icons.Rounded.Check,
                         contentDescription = stringResource(R.string.selected),
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = chrome.accent,
                         modifier = Modifier.size(22.dp),
                     )
                 }
@@ -1924,7 +1941,8 @@ private fun DownloadQualitySheet(
     selected: DownloadQuality,
     onSelect: (DownloadQuality) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+    val chrome = frostChromeColors()
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Row(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1932,7 +1950,7 @@ private fun DownloadQualitySheet(
             Icon(
                 imageVector = Icons.Rounded.Download,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = chrome.content,
                 modifier = Modifier.size(22.dp),
             )
             Spacer(Modifier.width(14.dp))
@@ -1940,16 +1958,16 @@ private fun DownloadQualitySheet(
                 Text(
                     text = stringResource(R.string.download_quality),
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = chrome.content,
                 )
                 Text(
                     text = stringResource(R.string.download_quality_dialog_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = chrome.contentVariant,
                 )
             }
         }
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(thickness = 0.5.dp, color = chrome.edge.copy(alpha = 0.55f))
 
         // Best first, matching [QualitySheet] — and here the best rung is also
         // the default, so the checkmark starts where the eye does.
@@ -1966,12 +1984,12 @@ private fun DownloadQualitySheet(
                     Text(
                         text = quality.localizedLabel(),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
+                        color = chrome.content,
                     )
                     Text(
                         text = stringResource(R.string.quality_per_track, quality.detail, quality.perTrack),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = chrome.contentVariant,
                     )
                 }
                 if (chosen) {
@@ -1979,7 +1997,7 @@ private fun DownloadQualitySheet(
                     Icon(
                         Icons.Rounded.Check,
                         contentDescription = stringResource(R.string.selected),
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = chrome.accent,
                         modifier = Modifier.size(22.dp),
                     )
                 }

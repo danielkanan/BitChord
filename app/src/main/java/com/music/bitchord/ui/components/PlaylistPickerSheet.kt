@@ -1,6 +1,8 @@
 package com.music.bitchord.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -46,7 +49,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -61,6 +66,9 @@ import com.music.bitchord.data.model.UserPlaylist
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.icons.BitChordIcons
+import com.music.bitchord.ui.theme.ArtworkPalette
+import com.music.bitchord.ui.theme.rememberArtworkPalette
+import dev.chrisbanes.haze.HazeState
 import java.util.Locale
 
 /**
@@ -85,24 +93,36 @@ fun PlaylistPickerSheet(
     modifier: Modifier = Modifier,
     song: Song? = null,
     startCreating: Boolean = false,
+    hazeState: HazeState? = null,
+    pagePalette: ArtworkPalette? = null,
 ) {
     var creating by remember { mutableStateOf(startCreating) }
+    val songPalette = rememberArtworkPalette(song?.thumbnailUrl, artPx = ROW_ART_PX)
+    val palette = pagePalette ?: song?.let { songPalette }
+    val chrome = palette?.toFrostChrome() ?: frostChromeColors()
+    val divider = palette?.divider ?: chrome.edge.copy(alpha = 0.55f)
 
     if (creating) {
-        NewPlaylistForm(
-            // Nowhere to go back to when the sheet opened straight onto the
-            // form; the sheet's own dismiss is the way out.
-            onBack = if (startCreating) null else ({ creating = false }),
-            onCreate = onCreate,
-            modifier = modifier,
-        )
+        FrostedSheet(hazeState = hazeState, palette = palette, modifier = modifier) {
+            NewPlaylistForm(
+                // Nowhere to go back to when the sheet opened straight onto the
+                // form; the sheet's own dismiss is the way out.
+                onBack = if (startCreating) null else ({ creating = false }),
+                onCreate = onCreate,
+            )
+        }
         return
     }
 
-    Column(modifier.fillMaxWidth()) {
+    FrostedSheet(
+        hazeState = hazeState,
+        palette = palette,
+        scrollable = false,
+        modifier = modifier,
+    ) {
         if (song != null) {
-            SheetTrackHeader(song)
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+            SheetTrackHeader(song, subtitleColor = chrome.contentVariant)
+            HorizontalDivider(thickness = 0.5.dp, color = divider)
         }
         SheetHeading(
             stringResource(if (song != null) R.string.add_to_playlist else R.string.your_playlists)
@@ -112,6 +132,7 @@ fun PlaylistPickerSheet(
         ActionRow(
             icon = BitChordIcons.Plus,
             label = stringResource(R.string.new_playlist),
+            accent = chrome.accent,
             onClick = { creating = true },
         )
 
@@ -125,6 +146,7 @@ fun PlaylistPickerSheet(
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
+                    color = chrome.accent,
                     strokeWidth = 2.5.dp,
                     modifier = Modifier.size(26.dp),
                 )
@@ -133,7 +155,7 @@ fun PlaylistPickerSheet(
             playlists.isEmpty() -> Text(
                 text = stringResource(R.string.no_playlists_yet),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = chrome.contentVariant,
                 modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp),
             )
 
@@ -141,7 +163,7 @@ fun PlaylistPickerSheet(
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 6.dp),
                     thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = divider,
                 )
                 // Capped so a long list can't push the sheet past the screen;
                 // it scrolls inside the sheet instead.
@@ -152,12 +174,13 @@ fun PlaylistPickerSheet(
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
     }
 }
 
 @Composable
 private fun PlaylistRow(playlist: UserPlaylist, onClick: () -> Unit) {
+    val chrome = frostChromeColors()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -172,14 +195,14 @@ private fun PlaylistRow(playlist: UserPlaylist, onClick: () -> Unit) {
                 .size(44.dp)
                 .clip(RoundedCornerShape(7.dp))
                 .thumbnailBorder(RoundedCornerShape(7.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(chrome.tint.copy(alpha = 0.55f)),
         )
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = playlist.title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = chrome.content,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -187,7 +210,7 @@ private fun PlaylistRow(playlist: UserPlaylist, onClick: () -> Unit) {
                 Text(
                     text = playlist.subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = chrome.contentVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -208,12 +231,10 @@ private fun NewPlaylistForm(
 ) {
     var name by remember { mutableStateOf("") }
     var privacy by remember { mutableStateOf(PlaylistPrivacy.PRIVATE) }
-    val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-
-    // The form exists to be typed into; opening it with the keyboard already
-    // up saves the tap that would otherwise always follow.
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // Shared inset for the header and the foot under Create — equal so the
+    // form doesn't open tighter at the top than it closes at the bottom.
+    val edgePad = 16.dp
 
     val submit: () -> Unit = {
         if (name.isNotBlank()) {
@@ -222,8 +243,7 @@ private fun NewPlaylistForm(
         }
     }
 
-    // As above: the keyboard is up from the moment this opens, and "Create
-    // playlist" is below the fold without this.
+    val chrome = frostChromeColors()
     Column(
         modifier
             .fillMaxWidth()
@@ -232,7 +252,12 @@ private fun NewPlaylistForm(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = if (onBack != null) 8.dp else 22.dp, end = 22.dp, bottom = 8.dp),
+                .padding(
+                    start = if (onBack != null) 8.dp else 22.dp,
+                    end = 22.dp,
+                    top = edgePad,
+                    bottom = edgePad,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             onBack?.let {
@@ -240,31 +265,36 @@ private fun NewPlaylistForm(
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = stringResource(R.string.back),
-                        tint = MaterialTheme.colorScheme.onBackground,
+                        tint = chrome.content,
                     )
                 }
             }
             Column(Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.new_playlist),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = chrome.content,
                 )
                 Text(
                     text = stringResource(R.string.saved_to_youtube_music_account),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = chrome.contentVariant,
                 )
             }
         }
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(thickness = 0.5.dp, color = chrome.edge.copy(alpha = 0.55f))
 
+        // Same pill geometry as [SearchField] — height, radius, clear control —
+        // minus the magnifier, since this field is naming rather than searching.
+        val fieldShape = RoundedCornerShape(percent = 50)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 22.dp, vertical = 16.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .height(46.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, fieldShape)
+                .border(GLASS_EDGE_WIDTH, chrome.edge, fieldShape)
+                .padding(start = 16.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(1f)) {
@@ -272,7 +302,7 @@ private fun NewPlaylistForm(
                     Text(
                         text = stringResource(R.string.playlist_name),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = chrome.contentVariant,
                     )
                 }
                 BasicTextField(
@@ -280,14 +310,12 @@ private fun NewPlaylistForm(
                     onValueChange = { name = it },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onBackground,
+                        color = chrome.content,
                     ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    cursorBrush = SolidColor(chrome.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { submit() }),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             if (name.isNotEmpty()) {
@@ -301,14 +329,14 @@ private fun NewPlaylistForm(
                     Icon(
                         Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.clear_name),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = chrome.contentVariant,
                         modifier = Modifier.size(18.dp),
                     )
                 }
             }
         }
 
-        SheetHeading(stringResource(R.string.who_can_see_it).uppercase(Locale.getDefault()))
+        SheetHeading(stringResource(R.string.who_can_see_it))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -321,21 +349,36 @@ private fun NewPlaylistForm(
                     label = option.label,
                     selected = option == privacy,
                     onClick = { privacy = option },
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
 
         Spacer(Modifier.height(20.dp))
+        val buttonShape = RoundedCornerShape(percent = 50)
         Button(
             onClick = submit,
             enabled = name.isNotBlank(),
+            shape = buttonShape,
+            border = BorderStroke(GLASS_EDGE_WIDTH, chrome.edge),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = chrome.accent,
+                contentColor = if (chrome.accent.luminance() > 0.45f) {
+                    Color(0xFF1A1A1A)
+                } else {
+                    Color.White
+                },
+                disabledContainerColor = chrome.tint.copy(alpha = 0.55f),
+                disabledContentColor = chrome.contentVariant.copy(alpha = 0.5f),
+            ),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp),
+                .padding(horizontal = 22.dp)
+                .height(46.dp),
         ) {
             Text(stringResource(R.string.create_playlist))
         }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(edgePad))
     }
 }
 
@@ -364,6 +407,7 @@ internal fun RenamePlaylistForm(
         }
     }
 
+    val chrome = frostChromeColors()
     // The form opens with the keyboard already up, which on a bottom sheet
     // would otherwise sit over the button the form exists to reach.
     Column(
@@ -381,23 +425,23 @@ internal fun RenamePlaylistForm(
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = stringResource(R.string.back),
-                    tint = MaterialTheme.colorScheme.onBackground,
+                    tint = chrome.content,
                 )
             }
             Text(
                 text = stringResource(R.string.rename_playlist),
                 style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = chrome.content,
                 modifier = Modifier.weight(1f),
             )
         }
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(thickness = 0.5.dp, color = chrome.edge.copy(alpha = 0.55f))
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 22.dp, vertical = 16.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+                .background(chrome.tint.copy(alpha = 0.55f), RoundedCornerShape(11.dp))
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -406,9 +450,9 @@ internal fun RenamePlaylistForm(
                 onValueChange = { name = it },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = chrome.content,
                 ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                cursorBrush = SolidColor(chrome.accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }),
                 modifier = Modifier
@@ -448,24 +492,32 @@ private fun PrivacyPill(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val chrome = frostChromeColors()
+    // Accent from a sleeve can be pale; white-on-pale (and light-on-light in
+    // dark mode) disappears, so pick the label that actually contrasts.
     val content = if (selected) {
-        MaterialTheme.colorScheme.onPrimary
+        if (chrome.accent.luminance() > 0.45f) Color(0xFF1A1A1A) else Color.White
     } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
+        chrome.contentVariant
     }
+    val pillShape = RoundedCornerShape(percent = 50)
     Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(percent = 50))
+        modifier = modifier
+            .clip(pillShape)
             .background(
                 if (selected) {
-                    MaterialTheme.colorScheme.primary
+                    chrome.accent
                 } else {
-                    MaterialTheme.colorScheme.surfaceVariant
+                    chrome.tint.copy(alpha = 0.55f)
                 },
+                pillShape,
             )
+            .border(GLASS_EDGE_WIDTH, chrome.edge, pillShape)
             .clickable(onClick = onClick)
             .padding(start = 11.dp, end = 14.dp, top = 7.dp, bottom = 7.dp),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -479,6 +531,8 @@ private fun PrivacyPill(
             text = label,
             style = MaterialTheme.typography.titleMedium,
             color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

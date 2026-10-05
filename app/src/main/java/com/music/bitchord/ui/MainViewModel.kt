@@ -891,8 +891,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // into it for the same reason [addSuggestedSong] does.
                     appendToOpenPlaylist(playlist.browseId, song, added[song.videoId])
                     onResult(false)
+                    refreshPlaylistArtwork(playlist.browseId)
                 },
                 onFailure = {},
+            )
+        }
+    }
+
+    /**
+     * Adds several tracks to [playlist] in one edit — what the Add Music sheet
+     * confirms after staging a selection. Duplicates already on the playlist
+     * (or repeated in [songs]) are skipped rather than sent twice.
+     */
+    fun addSongsToPlaylist(playlist: UserPlaylist, songs: List<Song>, onDone: () -> Unit = {}) {
+        if (!requireSignIn() || songs.isEmpty()) {
+            onDone()
+            return
+        }
+        viewModelScope.launch {
+            val openSongs = (_detailStack.value.firstOrNull { it.browseId == playlist.browseId }
+                ?.songs as? UiState.Success)?.data
+            val known = openSongs
+                ?: YtMusicRepository.allSongs(playlist.browseId).getOrNull().orEmpty()
+            val knownIds = known.mapTo(HashSet()) { it.videoId }
+            val unique = songs
+                .distinctBy { it.videoId }
+                .filterNot { it.videoId in knownIds }
+            if (unique.isEmpty()) {
+                onDone()
+                return@launch
+            }
+            YtMusicRepository.addToPlaylist(
+                playlist.playlistId,
+                unique.map { it.videoId },
+            ).fold(
+                onSuccess = { added ->
+                    libraryStale = true
+                    unique.forEach { song ->
+                        appendToOpenPlaylist(playlist.browseId, song, added[song.videoId])
+                    }
+                    // One artwork refresh after the whole batch, not per track.
+                    refreshPlaylistArtwork(playlist.browseId)
+                    onDone()
+                },
+                onFailure = { onDone() },
             )
         }
     }
@@ -901,8 +943,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * Creates a playlist, seeded with [song] when the flow started from a
      * track's menu — one request, so it can't half-succeed into an empty
      * playlist the user has to add to again.
+     *
+     * [onCreated] runs on the main thread after a successful create, with the
+     * local [UserPlaylist] already on the library shelf — callers use it to
+     * open the page (and the add-music sheet) without waiting for a feed refresh.
      */
-    fun createPlaylist(title: String, privacy: PlaylistPrivacy, song: Song? = null) {
+    fun createPlaylist(
+        title: String,
+        privacy: PlaylistPrivacy,
+        song: Song? = null,
+        onCreated: (UserPlaylist) -> Unit = {},
+    ) {
         if (!requireSignIn()) return
         val name = title.trim().ifBlank { text(R.string.new_playlist) }
         viewModelScope.launch {
@@ -946,6 +997,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             ),
                         ) + items.filterNot { it.browseId == created.browseId }
                     }
+                    onCreated(created)
                 },
                 onFailure = {},
             )
@@ -967,18 +1019,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ).fold(
                 onSuccess = {
                     libraryStale = true
+                    var nextSongs: List<Song>? = null
                     _detailStack.value = _detailStack.value.map { page ->
                         val songs = (page.songs as? UiState.Success)?.data
                         if (page.browseId != browseId || songs == null) {
                             page
                         } else {
-                            page.copy(
-                                songs = UiState.Success(
-                                    songs.filterNot { it.setVideoId == setVideoId },
-                                ),
-                            )
+                            val updated = songs.filterNot { it.setVideoId == setVideoId }
+                            nextSongs = updated
+                            if (updated.isEmpty()) {
+                                page.copy(
+                                    songs = UiState.Error(text(R.string.no_tracks_here)),
+                                    thumbnailUrl = null,
+                                )
+                            } else {
+                                page.copy(
+                                    songs = UiState.Success(updated),
+                                    thumbnailUrl = updated.firstOrNull()?.thumbnailUrl
+                                        ?: page.thumbnailUrl,
+                                )
+                            }
                         }
                     }
+                    nextSongs?.let { syncPlaylistLibraryChrome(browseId, it) }
+                    refreshPlaylistArtwork(browseId)
                 },
                 onFailure = {},
             )
@@ -1020,6 +1084,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                     appendToOpenPlaylist(browseId, song, added[song.videoId])
+                    refreshPlaylistArtwork(browseId)
                 },
                 onFailure = {},
             )
@@ -1041,6 +1106,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun appendToOpenPlaylist(browseId: String, song: Song, setVideoId: String?) {
         val added = song.copy(setVideoId = setVideoId)
+        var nextSongs: List<Song>? = null
         _detailStack.value = _detailStack.value.map { page ->
             if (page.browseId != browseId) return@map page
             val songs = when (val state = page.songs) {
@@ -1052,13 +1118,94 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // YouTube's side, but a duplicate row from a double tap is not
             // something the user asked for.
             if (songs.any { it.videoId == song.videoId }) return@map page
-            page.copy(
-                songs = UiState.Success(
-                    songs + added.copy(
-                        thumbnailUrl = added.thumbnailUrl ?: page.thumbnailUrl,
-                    ),
-                ),
+            val updated = songs + added.copy(
+                thumbnailUrl = added.thumbnailUrl ?: page.thumbnailUrl,
             )
+            nextSongs = updated
+            page.copy(
+                songs = UiState.Success(updated),
+                // First track on an empty playlist becomes the sleeve; later
+                // refreshes may replace it with YouTube's collage.
+                thumbnailUrl = page.thumbnailUrl ?: added.thumbnailUrl,
+            )
+        }
+        nextSongs?.let { syncPlaylistLibraryChrome(browseId, it) }
+    }
+
+    /**
+     * Keeps the library card (and open page sleeve) in step with the tracks
+     * just added or removed — cover art drives the page palette, so a stale
+     * thumbnail leaves the chrome washed in the wrong colour.
+     */
+    private fun syncPlaylistLibraryChrome(browseId: String, songs: List<Song>) {
+        val thumb = songs.firstOrNull()?.thumbnailUrl
+        val countLabel = if (songs.isEmpty()) "" else "${songs.size} songs"
+        _playlists.value = _playlists.value.map { playlist ->
+            if (playlist.browseId != browseId) playlist
+            else playlist.copy(
+                subtitle = countLabel,
+                thumbnailUrl = thumb ?: playlist.thumbnailUrl.takeIf { songs.isNotEmpty() },
+            )
+        }
+        editPlaylistShelf { items ->
+            items.map { item ->
+                if (item.browseId != browseId) item
+                else item.copy(
+                    subtitle = countLabel,
+                    thumbnailUrl = thumb ?: item.thumbnailUrl.takeIf { songs.isNotEmpty() },
+                )
+            }
+        }
+        if (thumb != null || songs.isEmpty()) {
+            _detailStack.value = _detailStack.value.map { page ->
+                if (page.browseId != browseId) page
+                else page.copy(thumbnailUrl = thumb)
+            }
+        }
+    }
+
+    /**
+     * Keeps the sleeve in step with the tracks after an edit.
+     *
+     * Prefer the lead track's art over YouTube's collage: on older playlists
+     * the collage URL often stays on the pre-edit mosaic for a long time (or
+     * forever), and writing that stale image back over the track we just set
+     * flashes the new tint for a beat then snaps to the old/"default" one.
+     * New playlists regenerate their collage quickly, so they didn't show it.
+     */
+    private fun refreshPlaylistArtwork(browseId: String) {
+        if (!browseId.startsWith("VL") && !browseId.startsWith("PL")) return
+        viewModelScope.launch {
+            YtMusicRepository.browseSongs(browseId).onSuccess { page ->
+                _detailStack.value = _detailStack.value.map { detail ->
+                    if (detail.browseId != browseId) return@map detail
+                    val localLead = (detail.songs as? UiState.Success)?.data
+                        ?.firstOrNull()?.thumbnailUrl
+                    // Local lead first — the browse can still list the pre-edit
+                    // order for a moment, and the collage is the thing that
+                    // was snapping old playlists back to their stale tint.
+                    val art = localLead
+                        ?: page.songs.firstOrNull()?.thumbnailUrl
+                        ?: page.header?.thumbnailUrl
+                        ?: detail.thumbnailUrl
+                        ?: return@map detail
+                    detail.copy(thumbnailUrl = art)
+                }
+                val sleeve = _detailStack.value
+                    .firstOrNull { it.browseId == browseId }
+                    ?.thumbnailUrl
+                    ?: return@onSuccess
+                _playlists.value = _playlists.value.map { playlist ->
+                    if (playlist.browseId != browseId) playlist
+                    else playlist.copy(thumbnailUrl = sleeve)
+                }
+                editPlaylistShelf { items ->
+                    items.map { item ->
+                        if (item.browseId != browseId) item
+                        else item.copy(thumbnailUrl = sleeve)
+                    }
+                }
+            }
         }
     }
 
@@ -2312,10 +2459,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Update by id — the user may have pushed another page meanwhile.
             _detailStack.value = _detailStack.value.map {
                 if (it.browseId == browseId && it.songs is UiState.Loading) {
+                    val songs = (state as? UiState.Success)?.data
+                    // Sleeve from the card, then the browse header, then the
+                    // first track — a playlist with songs but no collage still
+                    // has to tint from something, or the page stays on the
+                    // theme colours with art already on screen.
+                    val sleeve = artwork
+                        ?: it.thumbnailUrl
+                        ?: songs?.firstOrNull()?.thumbnailUrl
                     it.copy(
                         songs = state,
                         sections = sections,
-                        thumbnailUrl = artwork ?: it.thumbnailUrl,
+                        thumbnailUrl = sleeve,
                         title = name ?: it.title,
                         subtitle = credit ?: it.subtitle,
                         suggestedSongs = suggested,

@@ -10,13 +10,23 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import android.os.Build
+import android.view.RoundedCorner
+import android.view.View
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.ui.theme.ArtworkPalette
@@ -72,13 +82,52 @@ fun ArtworkPalette.toFrostChrome(): FrostChromeColors = FrostChromeColors(
 fun frostChromeColors(): FrostChromeColors {
     LocalFrostChrome.current?.let { return it }
     val scheme = MaterialTheme.colorScheme
+    // [FROST_TINT] is always dark, so glyph colours stay light even when the
+    // app theme itself is light — otherwise labels vanish into the frost.
     return FrostChromeColors(
         tint = FROST_TINT,
         edge = GLASS_EDGE_COLOR,
-        content = scheme.onSurface,
-        contentVariant = scheme.onSurfaceVariant,
+        content = Color(0xFFF2F2F2),
+        contentVariant = Color(0xFFB8B8B8),
         accent = scheme.primary,
     )
+}
+
+/**
+ * Bottom corner radius of the current display, from the window's
+ * [android.view.RoundedCorner] (API 31+).
+ *
+ * Edge-to-edge sheets that sit on the screen foot use this so their bottom
+ * curve matches the phone's, not a fixed guess. Below API 31 — or on a square
+ * panel — [fallback] is used instead.
+ */
+@Composable
+fun rememberBottomDisplayCornerRadius(fallback: Dp = 28.dp): Dp {
+    val view = LocalView.current
+    val density = LocalDensity.current
+    var radiusPx by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(view) {
+        fun read() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                radiusPx = 0
+                return
+            }
+            val insets = view.rootWindowInsets ?: return
+            val left = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT)?.radius ?: 0
+            val right = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT)?.radius ?: 0
+            radiusPx = maxOf(left, right)
+        }
+        val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> read() }
+        view.addOnLayoutChangeListener(listener)
+        view.requestApplyInsets()
+        read()
+        onDispose { view.removeOnLayoutChangeListener(listener) }
+    }
+
+    return with(density) {
+        (if (radiusPx > 0) radiusPx else fallback.roundToPx()).toDp()
+    }
 }
 
 /**

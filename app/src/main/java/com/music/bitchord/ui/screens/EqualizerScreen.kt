@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -63,6 +64,8 @@ import com.music.bitchord.data.settings.EqualizerMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
+import com.music.bitchord.ui.components.FrostedSheet
+import com.music.bitchord.ui.components.frostChromeColors
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import java.util.Locale
@@ -277,15 +280,19 @@ fun EqualizerScreen(
     if (pickingPreset) {
         ModalBottomSheet(
             onDismissRequest = { pickingPreset = false },
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = Color.Transparent,
+            dragHandle = null,
+            contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         ) {
-            PresetSheet(
-                selected = preset,
-                onSelect = {
-                    AppSettings.setEqualizerPreset(it)
-                    pickingPreset = false
-                },
-            )
+            FrostedSheet(hazeState = null, scrollable = false) {
+                PresetSheet(
+                    selected = preset,
+                    onSelect = {
+                        AppSettings.setEqualizerPreset(it)
+                        pickingPreset = false
+                    },
+                )
+            }
         }
     }
 }
@@ -813,16 +820,17 @@ private fun BalanceControl(
 @Composable
 private fun PresetSheet(selected: EqualizerPreset, onSelect: (EqualizerPreset) -> Unit) {
     val haptics = rememberHaptics()
-    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+    val chrome = frostChromeColors()
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Text(
             text = stringResource(R.string.equalizer_preset),
             style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
+            color = chrome.content,
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
         )
         HorizontalDivider(
             thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outline,
+            color = chrome.edge.copy(alpha = 0.55f),
         )
         // Sixteen curves is taller than the sheet on most phones, and laid
         // out straight the ones past the fold were simply unreachable. The
@@ -854,14 +862,14 @@ private fun PresetSheet(selected: EqualizerPreset, onSelect: (EqualizerPreset) -
                     Text(
                         text = preset.localizedLabel(),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
+                        color = chrome.content,
                         modifier = Modifier.weight(1f),
                     )
                     if (chosen) {
                         Icon(
                             Icons.Rounded.Check,
                             contentDescription = stringResource(R.string.selected),
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = chrome.accent,
                             modifier = Modifier.size(22.dp),
                         )
                     }

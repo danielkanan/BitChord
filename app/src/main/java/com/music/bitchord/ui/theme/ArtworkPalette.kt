@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +77,13 @@ data class ArtworkPalette(
  * page opened twice, has nothing to wait for and nothing to fade. Only a sleeve
  * genuinely being seen for the first time starts from the theme's own colours
  * and warms into the artwork's, so it never flashes a placeholder tint.
+ *
+ * When the URL *changes* (playlist collage refresh after add/remove, first
+ * track replacing an empty sleeve), the previous artwork palette is held until
+ * the new seed lands — falling back to the theme mid-refresh would flash the
+ * untinted page behind art that is already on screen. Clearing [imageUrl]
+ * (empty playlist) drops that hold and returns to the theme.
+ *
  * "Reduce animation" turns that crossfade into a cut.
  */
 @Composable
@@ -95,12 +103,22 @@ fun rememberArtworkPalette(
     val scheme = MaterialTheme.colorScheme
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val seed = rememberArtworkSeed(imageUrl, artPx)
+    val seedPalette = remember(seed, dark) { seed?.toPalette(dark) }
+    // Last sleeve-derived colours — kept across URL changes so a refresh does
+    // not briefly paint the theme while the new bitmap is still decoding.
+    val sticky = remember { mutableStateOf<ArtworkPalette?>(null) }
+    SideEffect {
+        when {
+            seedPalette != null -> sticky.value = seedPalette
+            imageUrl == null -> sticky.value = null
+        }
+    }
     // Whether the colours were there from the first frame. If they were, there
     // is nothing to crossfade *from* and animating would only put a delay in
     // front of a surface that could already be right.
     val knownUpFront = remember(imageUrl) { seed != null }
 
-    val target = seed?.toPalette(dark) ?: ArtworkPalette(
+    val themeFallback = ArtworkPalette(
         background = scheme.background,
         wash = scheme.background,
         elevated = scheme.surfaceVariant,
@@ -109,6 +127,13 @@ fun rememberArtworkPalette(
         onBackgroundVariant = scheme.onSurfaceVariant,
         divider = scheme.outline,
     )
+    val target = when {
+        seedPalette != null -> seedPalette
+        // Art cleared — empty playlist, etc. Theme is the correct answer.
+        imageUrl == null -> themeFallback
+        // New URL still decoding: keep the previous sleeve's colours.
+        else -> sticky.value ?: themeFallback
+    }
 
     val spec: AnimationSpec<Color> = if (reduceAnimation || knownUpFront) {
         snap()

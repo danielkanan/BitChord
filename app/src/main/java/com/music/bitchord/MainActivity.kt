@@ -131,6 +131,7 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.model.EntityType
 import com.music.bitchord.data.model.SearchHistoryEntity
+import com.music.bitchord.data.model.UserPlaylist
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.music.bitchord.data.model.durationMillis
@@ -184,6 +185,7 @@ import com.music.bitchord.download.DownloadStore
 import com.music.bitchord.download.MediaTagger
 import com.music.bitchord.download.DownloadTarget
 import com.music.bitchord.download.Downloads
+import com.music.bitchord.ui.components.AddMusicToPlaylistSheet
 import com.music.bitchord.ui.components.BrowseActionsSheet
 import com.music.bitchord.ui.components.BrowseTarget
 import com.music.bitchord.ui.components.ConfirmationAlert
@@ -485,6 +487,8 @@ private fun BitChordApp(
     // The picker opened from the Library tab, where there is no track and
     // creating the playlist is the whole errand.
     var creatingPlaylist by remember { mutableStateOf(false) }
+    // Editable playlist the Add Music sheet is staging tracks for.
+    var addMusicPlaylist by remember { mutableStateOf<UserPlaylist?>(null) }
     // Which album or playlist the collection menu is open on, or null when it
     // is shut. One slot for every surface that can open it — the shelves on
     // three tabs, the search rows, the artist page's carousels, the release
@@ -2565,6 +2569,10 @@ private fun BitChordApp(
                                 song
                             }
                         }
+                        val ownedPlaylists by viewModel.playlistOwned.collectAsStateWithLifecycle()
+                        val editablePlaylist = page.browseId
+                            .takeIf { signedIn && ownedPlaylists[it] == true }
+                            ?.let { id -> playlists.firstOrNull { it.browseId == id } }
                         DetailScreen(
                             page = page,
                             currentSong = player.song,
@@ -2608,6 +2616,9 @@ private fun BitChordApp(
                                 viewModel.openDetail(id, name, "Artist", null, BrowseType.ARTIST)
                             },
                             onAddSuggested = { song -> viewModel.addSuggestedSong(page.browseId, song) },
+                            onAddMusic = editablePlaylist?.let { playlist ->
+                                { addMusicPlaylist = playlist }
+                            },
                             // Saving is an account action, so it isn't offered to a
                             // guest at all — same as the like and add-to-playlist rows
                             // in the track menu.
@@ -3477,15 +3488,22 @@ private fun BitChordApp(
                 ?.takeIf { !fromPlayer && song.setVideoId != null }
             ModalBottomSheet(
                 onDismissRequest = { songActions = null },
-                // The sheet paints itself in the track's own colours, corners
-                // and drag handle included — see SongActionsSheet.
+                // The sheet frosts itself — corners, drag handle and edge
+                // included — see SongActionsSheet. Zero insets so the frost can
+                // run to the screen foot (same resting line as the nav pills);
+                // the sheet pads its own rows clear of the gesture bar.
                 containerColor = Color.Transparent,
                 dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
             ) {
                 SongActionsSheet(
                     song = song,
                     signedIn = signedIn,
                     likeStatus = likeStatuses[song.videoId] ?: LikeStatus.INDIFFERENT,
+                    hazeState = hazeState,
+                    // Same sleeve the nav / mini player use on this page —
+                    // artist / album / playlist wash, not each track's cover.
+                    pagePalette = detail?.let { detailPalette },
                     onPlayNext = { playNext(song); songActions = null },
                     onAddToQueue = { addToQueue(song); songActions = null },
                     onStartRadio = { startRadio(song); songActions = null },
@@ -3662,9 +3680,15 @@ private fun BitChordApp(
             BackHandler(onBack = closeDownloadManager)
             ModalBottomSheet(
                 onDismissRequest = closeDownloadManager,
-                containerColor = MaterialTheme.colorScheme.background,
+                containerColor = Color.Transparent,
+                dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
             ) {
-                DownloadManagerSheet(onDismiss = closeDownloadManager)
+                DownloadManagerSheet(
+                    onDismiss = closeDownloadManager,
+                    hazeState = hazeState,
+                    pagePalette = detail?.let { detailPalette },
+                )
             }
         }
 
@@ -3680,13 +3704,17 @@ private fun BitChordApp(
             }
             ModalBottomSheet(
                 onDismissRequest = dismiss,
-                containerColor = MaterialTheme.colorScheme.background,
+                containerColor = Color.Transparent,
+                dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
             ) {
                 PlaylistPickerSheet(
                     playlists = playlists,
                     loading = playlistsLoading,
                     song = target,
                     startCreating = target == null,
+                    hazeState = hazeState,
+                    pagePalette = detail?.let { detailPalette },
                     onPick = { playlist ->
                         target?.let { song ->
                             viewModel.addToPlaylist(playlist, song) { alreadyInPlaylist ->
@@ -3701,8 +3729,49 @@ private fun BitChordApp(
                         dismiss()
                     },
                     onCreate = { title, privacy ->
-                        viewModel.createPlaylist(title, privacy, target)
+                        val seed = target
                         dismiss()
+                        viewModel.createPlaylist(title, privacy, seed) { created ->
+                            viewModel.openDetail(
+                                browseId = created.browseId,
+                                title = created.title,
+                                subtitle = created.subtitle,
+                                thumbnailUrl = created.thumbnailUrl,
+                                type = BrowseType.PLAYLIST,
+                            )
+                            // Empty new playlist — land on Add Music so the
+                            // next step is obvious. A seed track already put
+                            // something on the page, so leave the sheet shut.
+                            if (seed == null) {
+                                addMusicPlaylist = created
+                            }
+                        }
+                    },
+                )
+            }
+        }
+
+        // ---- Add music to an editable playlist ----
+        addMusicPlaylist?.let { playlist ->
+            val alreadyIn = ((detail?.takeIf { it.browseId == playlist.browseId }
+                ?.songs as? UiState.Success)?.data.orEmpty())
+                .mapTo(HashSet()) { it.videoId }
+            ModalBottomSheet(
+                onDismissRequest = { addMusicPlaylist = null },
+                containerColor = Color.Transparent,
+                dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+            ) {
+                AddMusicToPlaylistSheet(
+                    playlist = playlist,
+                    alreadyInPlaylist = alreadyIn,
+                    hazeState = hazeState,
+                    pagePalette = detail?.takeIf { it.browseId == playlist.browseId }
+                        ?.let { detailPalette },
+                    onDiscard = { addMusicPlaylist = null },
+                    onConfirm = { songs ->
+                        addMusicPlaylist = null
+                        viewModel.addSongsToPlaylist(playlist, songs)
                     },
                 )
             }
@@ -3749,11 +3818,15 @@ private fun BitChordApp(
             val pinnableId = target.browseId?.takeIf { target.type == BrowseType.PLAYLIST }
             ModalBottomSheet(
                 onDismissRequest = { browseActions = null },
-                containerColor = MaterialTheme.colorScheme.background,
+                containerColor = Color.Transparent,
+                dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
             ) {
                 BrowseActionsSheet(
                     // The live answer, not the one the target was built with.
                     target = target.copy(playlist = playlist),
+                    hazeState = hazeState,
+                    pagePalette = detail?.let { detailPalette },
                     onPlayNext = act(playSongsNext),
                     onAddToQueue = act(addSongsToQueue),
                     onPlay = act { songs -> play(songs, 0) }.takeIf { target.fromCard },

@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -27,8 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -44,9 +44,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,6 +105,24 @@ private val ActionsInset = 56.dp
 private fun leadingInset(hasBack: Boolean): Dp = if (hasBack) BackInset else TitleInset
 
 /**
+ * Status-bar inset that does not shrink when a system sheet (share chooser,
+ * permission dialog, …) briefly reports a smaller top inset while this
+ * activity is still visible underneath.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun stableStatusBarTopPadding(): Dp {
+    val inset = WindowInsets.statusBarsIgnoringVisibility
+        .asPaddingValues()
+        .calculateTopPadding()
+    var stable by remember { mutableStateOf(inset) }
+    if (inset > stable) {
+        stable = inset
+    }
+    return stable
+}
+
+/**
  * How far down the window the bar actually ends: the status bar inset it is
  * pinned under, plus its own height.
  *
@@ -114,8 +134,7 @@ private fun leadingInset(hasBack: Boolean): Dp = if (hasBack) BackInset else Tit
  * opens on a band of empty space.
  */
 @Composable
-fun topBarHeight(): Dp =
-    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarContentHeight
+fun topBarHeight(): Dp = stableStatusBarTopPadding() + TopBarContentHeight
 
 /**
  * Where page content should start: clear of the bar, plus [TopBarContentGap].
@@ -190,7 +209,7 @@ fun FrostedTopBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
+                .padding(top = stableStatusBarTopPadding())
                 .height(TopBarContentHeight),
         ) {
             // On a pushed page the back affordance is always visible, since

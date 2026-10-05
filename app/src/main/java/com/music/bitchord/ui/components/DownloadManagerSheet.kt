@@ -62,6 +62,8 @@ import com.music.bitchord.download.DownloadSession
 import com.music.bitchord.download.Downloads
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
+import com.music.bitchord.ui.theme.ArtworkPalette
+import dev.chrisbanes.haze.HazeState
 
 /**
  * The download indicator in the top bar, beside the account photo.
@@ -192,13 +194,24 @@ fun TopBarDownloadButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
  *   takes the indicator down.
  */
 @Composable
-fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun DownloadManagerSheet(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
+    pagePalette: ArtworkPalette? = null,
+) {
     val context = LocalContext.current
     val session by DownloadSession.state.collectAsStateWithLifecycle()
     // Newest ask last, the order the queue will actually reach them in.
     val items = remember(session.items) { session.items.sortedBy { it.sequence } }
+    val chrome = pagePalette?.toFrostChrome() ?: frostChromeColors()
 
-    Column(modifier.fillMaxWidth()) {
+    FrostedSheet(
+        hazeState = hazeState,
+        palette = pagePalette,
+        scrollable = false,
+        modifier = modifier,
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -209,7 +222,7 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                 Text(
                     text = stringResource(R.string.downloads),
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = chrome.content,
                 )
                 Text(
                     text = session.summary(),
@@ -217,7 +230,7 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                     color = if (session.failed > 0 && !session.busy) {
                         MaterialTheme.colorScheme.error
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        chrome.contentVariant
                     },
                 )
             }
@@ -231,7 +244,7 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                             .forEach { Downloads.cancel(it.videoId) }
                     },
                 ) {
-                    Text(stringResource(R.string.cancel_all))
+                    Text(stringResource(R.string.cancel_all), color = chrome.accent)
                 }
             } else {
                 TextButton(
@@ -240,7 +253,7 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                         onDismiss()
                     },
                 ) {
-                    Text(stringResource(R.string.clear))
+                    Text(stringResource(R.string.clear), color = chrome.accent)
                 }
             }
         }
@@ -255,8 +268,8 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .height(3.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                color = chrome.accent,
+                trackColor = chrome.accent.copy(alpha = 0.18f),
                 strokeCap = StrokeCap.Round,
                 gapSize = 0.dp,
                 drawStopIndicator = {},
@@ -264,7 +277,10 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(8.dp))
         }
 
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = pagePalette?.divider ?: chrome.edge.copy(alpha = 0.55f),
+        )
 
         // Capped rather than left to grow: a hundred-track playlist would
         // otherwise be a sheet that covers the screen and has to be scrolled
@@ -278,7 +294,7 @@ fun DownloadManagerSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                 )
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
     }
 }
 
@@ -291,6 +307,7 @@ private fun DownloadManagerRow(
 ) {
     val progress = item.progress
     val failed = progress as? DownloadProgress.Failed
+    val chrome = frostChromeColors()
 
     Row(
         modifier = Modifier
@@ -306,7 +323,7 @@ private fun DownloadManagerRow(
                     .size(ART_SIZE)
                     .clip(RoundedCornerShape(8.dp))
                     .thumbnailBorder(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(chrome.tint.copy(alpha = 0.55f)),
             )
             // A finished or failed track is stated over its own cover rather
             // than in a fourth column: the list is scanned for the odd one out,
@@ -341,7 +358,7 @@ private fun DownloadManagerRow(
             ExplicitSongTitle(
                 song = item.song,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = chrome.content,
             )
             Text(
                 // The release is worth naming where there is one: in a list of
@@ -352,7 +369,7 @@ private fun DownloadManagerRow(
                     item.from?.takeIf { it.isNotBlank() && it != item.song.artist },
                 ).joinToString(" · ").ifBlank { stringResource(R.string.unknown_artist) },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = chrome.contentVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -367,8 +384,8 @@ private fun DownloadManagerRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                        color = chrome.accent,
+                        trackColor = chrome.accent.copy(alpha = 0.18f),
                         strokeCap = StrokeCap.Round,
                         gapSize = 0.dp,
                         drawStopIndicator = {},
@@ -400,11 +417,12 @@ private fun DownloadManagerRow(
 }
 
 @Composable
-private fun RowStatus(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+private fun RowStatus(text: String, color: Color? = null) {
+    val chrome = frostChromeColors()
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
-        color = color,
+        color = color ?: chrome.contentVariant,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
@@ -416,6 +434,7 @@ private fun RowAction(
     label: String,
     onClick: () -> Unit,
 ) {
+    val chrome = frostChromeColors()
     Box(
         modifier = Modifier
             .size(36.dp)
@@ -426,7 +445,7 @@ private fun RowAction(
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = chrome.contentVariant,
             modifier = Modifier.size(20.dp),
         )
     }

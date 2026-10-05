@@ -203,6 +203,11 @@ fun DetailScreen(
      */
     onSectionItemLongPress: ((ShelfItem) -> Unit)? = null,
     /**
+     * Opens the Add Music sheet for an editable playlist. Null hides the
+     * control — albums, artist pages, and playlists this account does not own.
+     */
+    onAddMusic: (() -> Unit)? = null,
+    /**
      * Saves this release to the account's library, or takes it out —
      * [DetailPage.library] says which way round. Null hides the control
      * entirely, which is the answer for a guest and for the pages YouTube never
@@ -330,6 +335,15 @@ fun DetailScreen(
                         onShuffle = { onShuffle(songs) },
                         onArtistClick = onArtistClick,
                         onToggleLibrary = onToggleLibrary,
+                        onAddMusic = onAddMusic,
+                        // Only once we know the list is empty — while songs are
+                        // still Loading the Success path hasn't landed yet and
+                        // treating that as empty flashes the full-width pill.
+                        showEmptyAddMusic = onAddMusic != null && when (val state = page.songs) {
+                            is UiState.Success -> state.data.isEmpty()
+                            is UiState.Error -> state.message == stringResource(R.string.no_tracks_here)
+                            else -> false
+                        },
                     )
                 }
             }
@@ -566,6 +580,9 @@ private fun ReleaseHeader(
     onShuffle: () -> Unit,
     onArtistClick: (String, String) -> Unit,
     onToggleLibrary: (() -> Unit)?,
+    onAddMusic: (() -> Unit)? = null,
+    /** True only when the playlist is known empty (not still loading). */
+    showEmptyAddMusic: Boolean = false,
 ) {
     val (credit, meta) = page.headerLines(trackCount)
     // Every row on a release carries the same credit — see [pageCredit] — so
@@ -612,7 +629,11 @@ private fun ReleaseHeader(
                     modifier = Modifier
                         .padding(horizontal = HEADER_GUTTER)
                         .let { m ->
-                            val id = artist?.artistId
+                            // Playlist credit is the account that owns it, not
+                            // the first track's artist — don't wire the tap.
+                            val id = artist?.artistId?.takeIf {
+                                page.type != BrowseType.PLAYLIST
+                            }
                             if (id == null) {
                                 m
                             } else {
@@ -639,58 +660,120 @@ private fun ReleaseHeader(
             // Action buttons — live inside the header so there is zero gap
             // between the cover zone and the first song row. Shuffle and add
             // flank a wide Play pill, the Apple Music release row.
-            if (songs.isNotEmpty()) {
-                // Only where YouTube said the release can be saved and the
-                // caller is willing to take the write — see [onToggleLibrary].
-                val library = page.library?.takeIf { onToggleLibrary != null }
-                // Shuffle + library at most — overflow lives in the top bar
-                // next to Sort.
-                val circleSize = if (library != null) 46.dp else 50.dp
-                Spacer(Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = HEADER_GUTTER),
-                    horizontalArrangement = Arrangement.spacedBy(
-                        if (library != null) 8.dp else 10.dp,
-                        Alignment.CenterHorizontally,
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircleIconButton(
-                        icon = BitChordIcons.Shuffle,
-                        contentDescription = stringResource(R.string.shuffle),
-                        palette = palette,
-                        onClick = onShuffle,
-                        haptic = Haptic.Resume,
-                        size = circleSize,
-                    )
-                    PlayPill(
-                        onClick = onPlay,
-                        // Roughly half the row — Apple Music's pill, not a
-                        // stretch that eats every gap between the circles.
-                        modifier = Modifier.fillMaxWidth(0.58f),
-                        size = circleSize,
-                    )
-                    if (library != null) {
+            //
+            // An empty editable playlist has nothing to play yet, so Add Music
+            // takes that spot instead of leaving a blank strip under the title.
+            when {
+                songs.isNotEmpty() -> {
+                    // Only where YouTube said the release can be saved and the
+                    // caller is willing to take the write — see [onToggleLibrary].
+                    val library = page.library?.takeIf { onToggleLibrary != null }
+                    val trailingAdd = onAddMusic.takeIf { library == null }
+                    // Shuffle + library/add at most — overflow lives in the top bar
+                    // next to Sort.
+                    val circleSize = if (library != null || trailingAdd != null) 46.dp else 50.dp
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = HEADER_GUTTER),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            if (library != null || trailingAdd != null) 8.dp else 10.dp,
+                            Alignment.CenterHorizontally,
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         CircleIconButton(
-                            // A tick, not a filled-in plus: the pair reads as
-                            // "not yet / done", which is what the state is.
-                            icon = if (library.saved) BitChordIcons.Check else BitChordIcons.Plus,
-                            contentDescription = if (library.saved) {
-                                stringResource(R.string.remove_from_library)
-                            } else {
-                                stringResource(R.string.add_to_library)
-                            },
+                            icon = BitChordIcons.Shuffle,
+                            contentDescription = stringResource(R.string.shuffle),
                             palette = palette,
-                            onClick = { onToggleLibrary?.invoke() },
-                            haptic = if (library.saved) Haptic.ToggleOff else Haptic.ToggleOn,
+                            onClick = onShuffle,
+                            haptic = Haptic.Resume,
                             size = circleSize,
                         )
+                        PlayPill(
+                            onClick = onPlay,
+                            // Roughly half the row — Apple Music's pill, not a
+                            // stretch that eats every gap between the circles.
+                            modifier = Modifier.fillMaxWidth(0.58f),
+                            size = circleSize,
+                        )
+                        if (library != null) {
+                            CircleIconButton(
+                                // A tick, not a filled-in plus: the pair reads as
+                                // "not yet / done", which is what the state is.
+                                icon = if (library.saved) BitChordIcons.Check else BitChordIcons.Plus,
+                                contentDescription = if (library.saved) {
+                                    stringResource(R.string.remove_from_library)
+                                } else {
+                                    stringResource(R.string.add_to_library)
+                                },
+                                palette = palette,
+                                onClick = { onToggleLibrary?.invoke() },
+                                haptic = if (library.saved) Haptic.ToggleOff else Haptic.ToggleOn,
+                                size = circleSize,
+                            )
+                        } else if (trailingAdd != null) {
+                            CircleIconButton(
+                                icon = BitChordIcons.Plus,
+                                contentDescription = stringResource(R.string.add_music),
+                                palette = palette,
+                                onClick = trailingAdd,
+                                haptic = Haptic.Tap,
+                                size = circleSize,
+                            )
+                        }
                     }
+                    // Owned playlists that already show a library circle still
+                    // need a way into Add Music — a second row under Play.
+                    if (onAddMusic != null && library != null) {
+                        Spacer(Modifier.height(10.dp))
+                        AddMusicPill(onClick = onAddMusic, palette = palette)
+                    }
+                }
+                onAddMusic != null && showEmptyAddMusic -> {
+                    Spacer(Modifier.height(14.dp))
+                    AddMusicPill(onClick = onAddMusic, palette = palette)
                 }
             }
         }
+    }
+}
+
+/** Full-width Add Music control for empty (or library-flanked) playlists. */
+@Composable
+private fun AddMusicPill(
+    onClick: () -> Unit,
+    palette: ArtworkPalette,
+) {
+    val haptics = rememberHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = HEADER_GUTTER)
+            .height(50.dp)
+            .clip(RoundedCornerShape(percent = 50))
+            .background(palette.elevated, RoundedCornerShape(percent = 50))
+            .border(GLASS_EDGE_WIDTH, palette.onBackground.copy(alpha = 0.18f), RoundedCornerShape(percent = 50))
+            .clickable {
+                haptics.play(Haptic.Tap)
+                onClick()
+            },
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            BitChordIcons.Plus,
+            contentDescription = null,
+            tint = palette.onBackground,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.add_music),
+            style = MaterialTheme.typography.titleMedium,
+            color = palette.onBackground,
+        )
     }
 }
 
@@ -1438,6 +1521,25 @@ private fun ArtistShelfGridPage(
  */
 @Composable
 private fun DetailPage.headerLines(trackCount: Int): Pair<String, String> {
+    // Playlists bill as "Playlist • Alice" or "Playlist • Alice • 12 songs".
+    // Keep the owner on the credit line; put a *live* track count on meta next
+    // to Playlist — never reuse the subtitle's tally, which goes stale the
+    // moment a song is added or removed.
+    if (type == BrowseType.PLAYLIST) {
+        val parts = subtitle.split("•", "·").map { it.trim() }.filter { it.isNotEmpty() }
+        val kind = parts.firstOrNull { it.lowercase(Locale.ROOT) in KIND_WORDS }
+        val owner = parts.filter {
+            it != kind && !it.matches(PLAYLIST_SUBTITLE_TALLY)
+        }.joinToString(", ")
+        val kindLabel = stringResource(R.string.playlist)
+        val meta = listOfNotNull(
+            kindLabel,
+            trackCount.takeIf { it > 0 }?.let {
+                pluralStringResource(R.plurals.track_count_plural, it, it)
+            },
+        ).joinToString(" • ")
+        return owner to meta
+    }
     val parts = subtitle.split("•", "·").map { it.trim() }.filter { it.isNotEmpty() }
     val year = parts.lastOrNull { it.length == 4 && it.all(Char::isDigit) }
     val kind = parts.firstOrNull { it.lowercase(Locale.ROOT) in KIND_WORDS }
@@ -1464,6 +1566,12 @@ private fun DetailPage.headerLines(trackCount: Int): Pair<String, String> {
 /** Subtitle words that name what a page *is* rather than who made it. */
 private val KIND_WORDS = setOf(
     "album", "single", "ep", "playlist", "artist", "podcast", "episode", "song", "video",
+)
+
+/** "12 songs" / "3 tracks" glued onto a playlist subtitle — not a person. */
+private val PLAYLIST_SUBTITLE_TALLY = Regex(
+    """[\d.,]+\s*(songs?|tracks?)\b.*""",
+    RegexOption.IGNORE_CASE,
 )
 
 @Composable
