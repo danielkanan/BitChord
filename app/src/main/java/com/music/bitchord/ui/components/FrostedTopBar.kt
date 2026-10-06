@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
@@ -39,9 +41,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,12 +65,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import com.music.bitchord.R
@@ -84,6 +90,15 @@ import kotlin.math.roundToInt
  * rather than from a copy of the number.
  */
 val TopBarContentHeight = 52.dp
+
+/**
+ * The floating circles in the bar. Same diameter as the album page's add and
+ * shuffle circles, so the chrome reads as one size.
+ */
+val TopBarButtonSize = 46.dp
+
+/** Glyph inside [TopBarButtonSize], matching those album circles' icon scale. */
+val TopBarIconSize = 20.dp
 
 /**
  * The breathing room between the bar's bottom edge and the first thing under
@@ -141,6 +156,61 @@ fun topBarHeight(): Dp = stableStatusBarTopPadding() + TopBarContentHeight
  */
 @Composable
 fun topBarContentPadding(): Dp = topBarHeight() + TopBarContentGap
+
+/**
+ * Space the root-tab title takes in the list. The words themselves are drawn
+ * by [RootTabHeading], above the top fade, so the shadow does not sit on them.
+ */
+@Composable
+fun RootPageTitle(modifier: Modifier = Modifier) {
+    Spacer(modifier.fillMaxWidth().height(TopBarContentHeight + TopBarContentGap))
+}
+
+/**
+ * Listen Now / Library / Explore / Search, on the button row, scrolling with
+ * [listState]. Drawn above the top fade so that wash never tints the words.
+ */
+@Composable
+fun RootTabHeading(
+    text: String,
+    listState: LazyListState,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(TopBarContentHeight)
+            .padding(
+                start = PAGE_GUTTER,
+                end = PAGE_GUTTER + TopBarButtonSize * 2 + 8.dp,
+            )
+            .graphicsLayer {
+                val gone = listState.firstVisibleItemIndex > 0
+                alpha = if (gone) 0f else 1f
+                translationY = if (gone) {
+                    -size.height.toFloat()
+                } else {
+                    -listState.firstVisibleItemScrollOffset.toFloat()
+                }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontSize = 30.sp,
+                lineHeight = 30.sp,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+            ),
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // The glyph box sits a hair above the circle's middle. This lands
+            // the word on that middle.
+            modifier = Modifier.offset(y = 2.dp),
+        )
+    }
+}
 
 /**
  * The top bar's content — title, back affordance, actions — over no blur of its
@@ -240,12 +310,10 @@ fun FrostedTopBar(
                 }
             }
 
-            // Root tabs: page title lives here (Listen Now / Explore / …).
             // Pushed pages: the small title fades in once the large in-page
-            // heading has scrolled away. Artwork-led pages keep their own
-            // heading and stay empty in the bar.
-            if (!artworkPageChrome) {
-                val rootTitle = onBack == null
+            // heading has scrolled away. The root tabs (Listen Now, Library,
+            // Explore, Search) keep their title in the page, so it scrolls off.
+            if (!artworkPageChrome && onBack != null) {
                 AnimatedContent(
                     targetState = trailingTitle,
                     transitionSpec = {
@@ -254,13 +322,13 @@ fun FrostedTopBar(
                     },
                     label = "topBarTitleAnimation",
                     modifier = Modifier
-                        .align(if (rootTitle) Alignment.CenterStart else Alignment.Center)
+                        .align(Alignment.Center)
                         .padding(
-                            start = if (rootTitle) PAGE_GUTTER else max(leadingInset(onBack != null), ActionsInset),
-                            end = if (rootTitle) ActionsInset + PAGE_GUTTER else max(leadingInset(onBack != null), ActionsInset),
+                            start = max(leadingInset(true), ActionsInset),
+                            end = max(leadingInset(true), ActionsInset),
                         )
                         .fillMaxWidth()
-                        .graphicsLayer { alpha = if (rootTitle) 1f else titleAlpha },
+                        .graphicsLayer { alpha = titleAlpha },
                 ) { trailing ->
                     if (trailing != null) {
                         Row(
@@ -292,16 +360,12 @@ fun FrostedTopBar(
                     } else {
                         Text(
                             text = title,
-                            style = if (rootTitle) {
-                                MaterialTheme.typography.titleLarge
-                            } else {
-                                MaterialTheme.typography.titleMedium
-                            },
-                            fontWeight = if (rootTitle) FontWeight.Bold else FontWeight.Normal,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Normal,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            textAlign = if (rootTitle) TextAlign.Start else TextAlign.Center,
+                            textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -343,17 +407,20 @@ private fun ArtworkPageBackButton(
     val shape = CircleShape
     val contentColor = frostChromeColors().content
 
-    IconButton(
-        onClick = onClick,
-        modifier = modifier
-            .size(44.dp)
-            .then(artworkPageSurface(shape = shape, hazeState = hazeState)),
-    ) {
-        Icon(
-            Icons.AutoMirrored.Rounded.ArrowBack,
-            contentDescription = stringResource(R.string.back),
-            tint = contentColor,
-        )
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides TopBarButtonSize) {
+        IconButton(
+            onClick = onClick,
+            modifier = modifier
+                .size(TopBarButtonSize)
+                .then(artworkPageSurface(shape = shape, hazeState = hazeState)),
+        ) {
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = stringResource(R.string.back),
+                tint = contentColor,
+                modifier = Modifier.size(TopBarIconSize),
+            )
+        }
     }
 }
 
@@ -376,14 +443,16 @@ private fun ArtworkPageActions(
                     stiffness = Spring.StiffnessMediumLow,
                 ),
             )
-            // One 48dp profile target with no inset is a true 48x48 circle.
-            // Once another action exists, restore the navbar's PILL_INSET at
-            // both edges. This is layout padding inside the surface, not an
-            // outer margin, so PAGE_GUTTER remains unchanged.
+            // One profile target with no inset is a true circle of
+            // [TopBarButtonSize]. Once another action exists, restore the
+            // navbar's PILL_INSET at both edges. This is layout padding inside
+            // the surface, not an outer margin, so PAGE_GUTTER remains unchanged.
             .artworkActionEdgePadding(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        content()
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides TopBarButtonSize) {
+            content()
+        }
     }
 }
 
@@ -397,7 +466,7 @@ private fun ArtworkPageActions(
  */
 private fun Modifier.artworkActionEdgePadding(): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints.copy(minWidth = 0))
-    val oneActionWidth = 48.dp.roundToPx()
+    val oneActionWidth = TopBarButtonSize.roundToPx()
     val extraActionFraction = ((placeable.width - oneActionWidth).toFloat() / oneActionWidth)
         .coerceIn(0f, 1f)
     val edgePadding = (PILL_INSET.roundToPx() * extraActionFraction).roundToInt()
@@ -408,12 +477,19 @@ private fun Modifier.artworkActionEdgePadding(): Modifier = layout { measurable,
     }
 }
 
-/** The navbar's exact material choice, reusable by every floating top control. */
+/** The navbar's fill, so the back circle and the action pill match the bar. */
 @Composable
 private fun artworkPageSurface(
     shape: CornerBasedShape,
     hazeState: HazeState?,
-): Modifier = Modifier.frostedSurface(shape = shape, hazeState = hazeState)
+): Modifier {
+    val chrome = frostChromeColors()
+    return Modifier.frostedSurface(
+        shape = shape,
+        hazeState = hazeState,
+        tint = if (LocalFrostChrome.current != null) chrome.tint.navbarTint() else null,
+    )
+}
 
 /**
  * The account affordance at the right end of the bar.
@@ -455,6 +531,7 @@ fun TopBarAccountButton(
             Icons.Rounded.MoreVert,
             contentDescription = stringResource(R.string.switch_account),
             tint = frostChromeColors().content,
+            modifier = Modifier.size(TopBarIconSize),
         )
     }
 }

@@ -10,17 +10,21 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.graphics.SurfaceTexture
 import android.os.Build
 import android.util.Log
+import android.view.Gravity
 import android.view.TextureView
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -32,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
@@ -46,6 +51,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import com.music.bitchord.ui.components.footFadeCoverage
 import com.music.bitchord.ui.rememberIsForeground
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.music.bitchord.data.Http
@@ -156,6 +162,12 @@ fun CanvasArtworkPlayer(
     /** Optional end of the fade in view pixels; defaults to the view's bottom edge. */
     bottomFadeEndPx: Float? = null,
     /**
+     * A real blur across the clip's foot and on below it, into a solid colour,
+     * instead of [bottomFade]. Android 12+ only, where a blur effect exists;
+     * ignored below that, where a caller should not ask.
+     */
+    footBlur: FootBlurSpec? = null,
+    /**
      * Halts decoding for the length of a caller-driven transition — the sleeve
      * collapsing into the queue or lyrics panel and back — rather than only at
      * the two ends of it. That collapse is driven by the same clock as this
@@ -188,6 +200,7 @@ fun CanvasArtworkPlayer(
     val currentAlignPortraitTop by rememberUpdatedState(alignPortraitTop)
     val currentPortraitRevealBounds by rememberUpdatedState(portraitRevealBounds)
     val currentPresentationAlpha by rememberUpdatedState(presentationAlpha)
+    val currentFootBlur by rememberUpdatedState(footBlur)
     val reportAspect by rememberUpdatedState(onAspectRatioChanged)
 
     val player = remember {
@@ -364,6 +377,17 @@ fun CanvasArtworkPlayer(
                 // visible underneath for the length of the fade.
                 isOpaque = false
                 this.alpha = 0f
+                // Under a foot blur the clip is laid out shorter than its
+                // frame, after the update that asked for it; its crop has to
+                // follow it there.
+                addOnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                    val resized = right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop
+                    if (resized && currentFootBlur != null) {
+                        (view as TextureView).applyContentTransform(
+                            clipAspect, currentContentMode, currentAlignPortraitTop,
+                        )
+                    }
+                }
                 player.setVideoTextureView(this)
                 // setVideoTextureView installs ExoPlayer's own listener, and
                 // the player has to keep it — it is how the surface reaches
@@ -456,10 +480,12 @@ fun CanvasArtworkPlayer(
             }
         },
         update = { frame ->
-            val view = frame.getChildAt(0) as TextureView
+            // Not child 0: the page colour sits behind the clip, at the front
+            // of the list, once the foot blur has been asked for.
+            val view = frame.clipView()
             // Set on the view itself. A Compose alpha layer over a TextureView
             // is not reliably composited, and this is the same fade either way.
-            view.alpha = if (contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect <= 0f) {
+            val cover = if (contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect <= 0f) {
                 0f
             } else {
                 // Called here, in the view's update, so a fade driven by the
@@ -467,10 +493,25 @@ fun CanvasArtworkPlayer(
                 // recomposing the player around it.
                 alpha * presentationAlpha()
             }
+            view.alpha = cover
+            val foot = footBlur?.takeIf { Build.VERSION.SDK_INT >= Build.VERSION_CODES.S }
+            view.layOutAtHeight(foot?.contentHeightPx)
             view.applyContentTransform(clipAspect, contentMode, alignPortraitTop)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (foot != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // The clip stays fully drawn. The frame's own alpha is what
+                // fades it in, so the shader below reads the picture at full
+                // strength and the whole foot — blur included — arrives with it.
+                view.alpha = 1f
+                frame.alpha = cover
+                frame.fadeFraction = 0f
+                view.setRenderEffect(null)
+                frame.setFootBlur(foot, bounds.width, bounds.height)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                frame.alpha = 1f
+                frame.clearFootBlur(view)
                 view.setBottomFade(bottomFade, bounds, bottomFadeEndPx)
             } else {
+                frame.alpha = 1f
                 frame.fadeFraction = bottomFade
                 frame.fadeEndPx = bottomFadeEndPx
             }
@@ -616,6 +657,159 @@ private fun TextureView.setBottomFade(fraction: Float, bounds: IntSize, endPx: F
 }
 
 /**
+ * A progressive blur across a clip's foot: sharp down to [startPx], at full
+ * strength by [fullPx], then held. From [fadeStartPx] to [fadeEndPx] that
+ * picture fades out. The blur is already on above the fade, and the fade runs
+ * on past the clip so the transition has room.
+ *
+ * The moving twin of the still hero's foot (see HeroFoot), on the same lines.
+ */
+@Immutable
+data class FootBlurSpec(
+    val contentHeightPx: Int,
+    val startPx: Float,
+    val fullPx: Float,
+    val fadeStartPx: Float,
+    val fadeEndPx: Float,
+    val maxSigmaPx: Float,
+    val solid: Color,
+)
+
+/** Pins the clip to [heightPx] at the top of its frame, or back to filling it when null. */
+private fun TextureView.layOutAtHeight(heightPx: Int?) {
+    val wanted = heightPx ?: ViewGroup.LayoutParams.MATCH_PARENT
+    if (layoutParams?.height == wanted) return
+    layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, wanted, Gravity.TOP)
+}
+
+/**
+ * The clip, read once so the blur has a picture to work on. Past the clip
+ * the bottom edge is held, so the fade below it is still the picture going
+ * clear, not the page colour already sitting there.
+ */
+private const val FOOT_FLAT_SKSL = """
+uniform shader content;
+uniform float width;
+uniform float clipBottom;
+
+half4 main(float2 coord) {
+    float2 p = float2(
+        clamp(coord.x, 0.5, width - 0.5),
+        clamp(coord.y, 0.5, max(clipBottom - 0.5, 0.5))
+    );
+    return content.eval(p);
+}
+"""
+
+/**
+ * How wide each step of the foot is, as a share of [FootBlurSpec.maxSigmaPx],
+ * and how far down the blur box (0 at the sharp edge, 1 at full strength)
+ * that step takes over. Evenly spaced, the same straight line as the still.
+ */
+private val FOOT_BLUR_LEVELS = arrayOf(
+    0.25f to 0.25f,
+    0.50f to 0.50f,
+    0.75f to 0.75f,
+    1f to 1f,
+)
+
+/**
+ * [FOOT_FLAT_SKSL] blurred in steps down the foot. The frame's alpha follows
+ * the clip's fade, so none of this is rebuilt to do it.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private class FootBlur {
+    private val flatShader = RuntimeShader(FOOT_FLAT_SKSL)
+    private var applied: Triple<FootBlurSpec, Int, Int>? = null
+
+    /** The blur for a frame [width] x [height], or null when it is already applied. */
+    fun effect(spec: FootBlurSpec, width: Int, height: Int): RenderEffect? {
+        val inputs = Triple(spec, width, height)
+        if (inputs == applied) return null
+        applied = inputs
+        flatShader.setFloatUniform("width", width.toFloat())
+        flatShader.setFloatUniform("clipBottom", spec.contentHeightPx.toFloat())
+        val picture = RenderEffect.createRuntimeShaderEffect(flatShader, "content")
+        val widest = spec.maxSigmaPx.coerceAtLeast(1f)
+        var image = picture
+        val span = (spec.fullPx - spec.startPx).coerceAtLeast(1f)
+        var fromT = 0f
+        for ((share, toT) in FOOT_BLUR_LEVELS) {
+            val radius = (widest * share).coerceAtLeast(1f)
+            val blurred = RenderEffect.createChainEffect(
+                RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP),
+                picture,
+            )
+            val masked = RenderEffect.createBlendModeEffect(
+                blurred,
+                RenderEffect.createShaderEffect(
+                    reveal(spec.startPx + span * fromT, spec.startPx + span * toT, height),
+                ),
+                BlendMode.DST_IN,
+            )
+            image = RenderEffect.createBlendModeEffect(image, masked, BlendMode.SRC_OVER)
+            fromT = toT
+        }
+        return RenderEffect.createBlendModeEffect(
+            image,
+            RenderEffect.createShaderEffect(fadeOut(spec.fadeStartPx, spec.fadeEndPx, height)),
+            BlendMode.DST_IN,
+        )
+    }
+
+    /** Opaque on the colour edge, clear on the far edge, on the same curve as the still. */
+    private fun fadeOut(fromPx: Float, toPx: Float, height: Int): LinearGradient {
+        val span = height.toFloat().coerceAtLeast(1f)
+        var start = (fromPx / span).coerceIn(0f, 1f)
+        var end = (toPx / span).coerceIn(0f, 1f)
+        if (end <= start) end = (start + 0.001f).coerceAtMost(1f)
+        if (end <= start) start = (end - 0.001f).coerceAtLeast(0f)
+        val steps = 8
+        val colors = ArrayList<Int>(steps + 2)
+        val positions = ArrayList<Float>(steps + 2)
+        if (start > 0.001f) {
+            colors.add(android.graphics.Color.BLACK)
+            positions.add(0f)
+        }
+        for (i in 0..steps) {
+            val s = i / steps.toFloat()
+            val alpha = (footFadeCoverage(s) * 255f).toInt().coerceIn(0, 255)
+            val pos = start + (end - start) * s
+            if (positions.isNotEmpty() && pos <= positions.last()) continue
+            colors.add(android.graphics.Color.argb(alpha, 0, 0, 0))
+            positions.add(pos)
+        }
+        return LinearGradient(
+            0f,
+            0f,
+            0f,
+            span,
+            colors.toIntArray(),
+            positions.toFloatArray(),
+            Shader.TileMode.CLAMP,
+        )
+    }
+
+    /** Transparent above [fromPx], opaque from [toPx] down, so a blur level can take over. */
+    private fun reveal(fromPx: Float, toPx: Float, height: Int): LinearGradient {
+        val span = height.toFloat().coerceAtLeast(1f)
+        val start = (fromPx / span).coerceIn(0.002f, 0.96f)
+        val end = (toPx / span).coerceIn(start + 0.012f, 0.994f)
+        val clear = android.graphics.Color.TRANSPARENT
+        val opaque = android.graphics.Color.BLACK
+        return LinearGradient(
+            0f,
+            0f,
+            0f,
+            span,
+            intArrayOf(clear, clear, opaque, opaque),
+            floatArrayOf(0f, start, end, 1f),
+            Shader.TileMode.CLAMP,
+        )
+    }
+}
+
+/**
  * The pre-[Build.VERSION_CODES.S] bottom fade: the same dissolve
  * [setBottomFade] gets from a [RenderEffect], done the way it was done before
  * there was one.
@@ -631,6 +825,15 @@ private fun TextureView.setBottomFade(fraction: Float, bounds: IntSize, endPx: F
  * FrameLayout and `dispatchDraw` takes the ordinary path.
  */
 private class FadingBottomFrame(context: Context) : FrameLayout(context) {
+    /** The clip. A colour plate may sit in front of it in the child list. */
+    fun clipView(): TextureView {
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child is TextureView) return child
+        }
+        error("canvas frame has no clip")
+    }
+
     /** Share of the height, from the bottom, over which the child dissolves. */
     var fadeFraction: Float = 0f
         set(value) {
@@ -656,6 +859,34 @@ private class FadingBottomFrame(context: Context) : FrameLayout(context) {
     }
     private var gradient: LinearGradient? = null
     private var gradientHeight = 0
+    private var footBlur: Any? = null
+
+    /** The page colour filling the run under the clip, so the blur has it to settle into. */
+    private var solidPlate: View? = null
+
+    /**
+     * Blurs this frame's foot per [spec]: the clip pinned to the top, and the
+     * run under it. The picture is read off the frame first — a blur cannot
+     * see the clip otherwise — and that picture is what gets blurred.
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    fun setFootBlur(spec: FootBlurSpec, width: Int, height: Int) {
+        solidPlate?.visibility = GONE
+        val blurWidth = this.width.takeIf { it > 0 } ?: width
+        val blurHeight = this.height.takeIf { it > 0 } ?: height
+        if (blurWidth <= 0 || blurHeight <= 0 || spec.contentHeightPx <= 0) return
+        val blur = footBlur as? FootBlur ?: FootBlur().also { footBlur = it }
+        blur.effect(spec, blurWidth, blurHeight)?.let(::setRenderEffect)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    fun clearFootBlur(clip: TextureView) {
+        clip.setRenderEffect(null)
+        if (footBlur == null && solidPlate?.visibility != VISIBLE) return
+        footBlur = null
+        solidPlate?.visibility = GONE
+        setRenderEffect(null)
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)

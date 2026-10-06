@@ -70,6 +70,7 @@ import com.music.bitchord.data.settings.LibraryViewType
 import com.music.bitchord.ui.components.HERO_CARD_RATIO
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.RootPageTitle
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.SignInBanner
@@ -125,6 +126,9 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
         ) {
+            item(key = "home-title") {
+                RootPageTitle()
+            }
             if (!signedIn && onSignIn != null) {
                 item {
                     SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))

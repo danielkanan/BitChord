@@ -72,6 +72,7 @@ import com.music.bitchord.R
 import com.music.bitchord.data.model.SearchHistoryEntity
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.RootPageTitle
 import com.music.bitchord.ui.components.topBarContentPadding
 import com.music.bitchord.ui.components.ROW_DIVIDER_INSET
 import com.music.bitchord.ui.components.SearchField
@@ -361,10 +362,16 @@ fun SearchScreen(
             state = listState,
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                top = topBarContentPadding() + externalChromeHeight,
+                top = contentPadding.calculateTopPadding(),
                 bottom = contentPadding.calculateBottomPadding(),
             ),
         ) {
+            item(key = "search-title") { RootPageTitle() }
+            // Holds the results below the floating field. The title sits up in
+            // the button row and scrolls away; the field stays under the bar.
+            item(key = "search-chrome-spacer") {
+                Spacer(Modifier.height(externalChromeHeight))
+            }
             searchBody()
         }
     } else {
@@ -372,9 +379,8 @@ fun SearchScreen(
             // Search field and filter tabs stay fixed at the top, outside the
             // scrolling list, so they're always reachable rather than scrolling
             // away with the results or recent searches beneath them.
-            // The FrostedTopBar is visible on this tab (showing "Search"), so we
-            // clear it fully — status bar inset + bar height + breathing gap — so
-            // the search field sits cleanly below the bar instead of overlapping it.
+            // Clear the top bar — status bar inset + bar height + breathing gap —
+            // so the search field sits below the buttons instead of overlapping them.
             EmbeddedSearchChrome(modifier = Modifier.padding(top = topBarContentPadding()))
             LazyColumn(
                 state = listState,

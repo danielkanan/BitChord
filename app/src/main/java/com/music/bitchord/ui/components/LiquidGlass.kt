@@ -20,6 +20,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
@@ -28,9 +29,12 @@ import android.os.Build
 import android.view.RoundedCorner
 import android.view.View
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.graphics.ColorUtils
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.ui.theme.ArtworkPalette
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
@@ -131,25 +135,53 @@ fun rememberBottomDisplayCornerRadius(fallback: Dp = 28.dp): Dp {
 }
 
 /**
+ * The nav pills on a coloured page. [page] is the frost already taken from
+ * that page, a step lighter than the wash. Darken it, holding the hue, so
+ * the bar reads as a darker tint of the page behind it.
+ */
+fun Color.navbarTint(): Color {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(toArgb(), hsl)
+    hsl[2] = (hsl[2] - 0.10f).coerceIn(0.05f, 0.55f)
+    return Color(ColorUtils.HSLToColor(hsl))
+}
+
+/**
  * Frosted Haze fill clipped to [shape], or a solid tint when blur is
  * reduced / no [hazeState] is available. Always finishes with the chrome edge.
+ *
+ * [tint] replaces the chrome fill. The nav bar passes the page's own colour
+ * so the blur does not wash that hue back out to grey.
  */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun Modifier.frostedSurface(
     shape: CornerBasedShape,
     hazeState: HazeState?,
+    tint: Color? = null,
 ): Modifier {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val chrome = frostChromeColors()
+    val fill = tint ?: chrome.tint
+    val haze = if (tint != null) {
+        HazeStyle(
+            backgroundColor = fill,
+            tints = listOf(HazeTint(fill.copy(alpha = 0.94f))),
+            blurRadius = 24.dp,
+            noiseFactor = 0.08f,
+            fallbackTint = HazeTint(fill),
+        )
+    } else {
+        HazeMaterials.regular(fill)
+    }
     return clip(shape)
         .then(
             when {
                 hazeState != null && !reduceDynamicBlur -> Modifier.optimizedHazeEffect(
                     state = hazeState,
-                    style = HazeMaterials.regular(chrome.tint),
+                    style = haze,
                 )
-                else -> Modifier.background(chrome.tint, shape)
+                else -> Modifier.background(fill, shape)
             },
         )
         .border(GLASS_EDGE_WIDTH, chrome.edge, shape)

@@ -20,8 +20,10 @@ import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -83,6 +85,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,6 +104,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -235,7 +239,10 @@ import com.music.bitchord.ui.components.LocalFrostChrome
 import com.music.bitchord.ui.components.frostChromeColors
 import com.music.bitchord.ui.components.optimizedHazeEffect
 import com.music.bitchord.ui.components.toFrostChrome
+import com.music.bitchord.ui.components.RootTabHeading
 import com.music.bitchord.ui.components.topBarContentPadding
+import com.music.bitchord.ui.components.stableStatusBarTopPadding
+import com.music.bitchord.ui.components.TopBarIconSize
 import com.music.bitchord.ui.components.AppLanguageDialog
 import com.music.bitchord.ui.components.TranslationLanguageDialog
 import com.music.bitchord.ui.components.LyricsSourcesDialog
@@ -266,6 +273,7 @@ import com.music.bitchord.ui.replay.rememberReplayState
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.canvas.keyColors
 import com.music.bitchord.ui.theme.BitChordTheme
+import com.music.bitchord.ui.theme.onSolid
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import com.music.bitchord.ui.theme.SystemBarIcons
 import com.music.bitchord.ui.utils.guardSheetFromContentTouches
@@ -1941,6 +1949,12 @@ private fun BitChordApp(
         top = topBarContentPadding(),
         bottom = if (player.song != null) 210.dp else 140.dp,
     )
+    // Root tabs draw their title in the bar's own row, so the list starts at
+    // the status bar and the title block fills the rest.
+    val rootListPadding = PaddingValues(
+        top = stableStatusBarTopPadding(),
+        bottom = listPadding.calculateBottomPadding(),
+    )
 
     // What colour the page currently under the bars is. The fades either end
     // of the screen are flat colour wherever their blur has least to say, so
@@ -1963,6 +1977,24 @@ private fun BitChordApp(
             },
         keyColors = detailApple?.keyColors(),
     )
+    // What the open detail page is actually painted: its hero's own bottom
+    // colour, reported by the page once it has read it. The bars follow that,
+    // not the palette's clamped tint, or each would lay a band of a second
+    // colour over the page.
+    var detailPageColor by remember(detail?.browseId) { mutableStateOf<Color?>(null) }
+    val detailChromePalette = remember(detailPalette, detailPageColor) {
+        detailPalette.onSolid(detailPageColor)
+    }
+    val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    // Restarted per page, so a new page's bars start from its own colour
+    // rather than easing out of the previous page's.
+    val detailChromeColor = key(detail?.browseId) {
+        animateColorAsState(
+            targetValue = detailChromePalette.background,
+            animationSpec = if (reduceAnimation) snap() else tween(DETAIL_SOLID_FADE_MS),
+            label = "detailChrome",
+        ).value
+    }
 
     // One set of numbers for the cards, the page, the stories and the shared
     // picture, so they cannot disagree. Read while any of them is on screen —
@@ -2668,6 +2700,11 @@ private fun BitChordApp(
                             listState = detailListState,
                             activeShelf = detailActiveShelf,
                             onActiveShelfChange = { detailActiveShelf = it },
+                            // A page still fading out under its replacement
+                            // must not paint the bars its own colour.
+                            onPageColorChange = { color ->
+                                if (page.browseId == detail?.browseId) detailPageColor = color
+                            },
                             onSongClick = { songs, index ->
                                 playFrom(
                                     songs,
@@ -2752,7 +2789,7 @@ private fun BitChordApp(
                             refreshing = MainViewModel.Feed.HOME in refreshing,
                             onRefresh = { viewModel.refresh(MainViewModel.Feed.HOME) },
                             pullState = homePull,
-                            contentPadding = listPadding,
+                            contentPadding = rootListPadding,
                             onLoadMore = viewModel::loadMoreHome,
                             loadingMore = homeLoadingMore,
                             recentlyPlayedLoading = homeRecentlyPlayedLoading,
@@ -2796,7 +2833,7 @@ private fun BitChordApp(
                             refreshing = MainViewModel.Feed.EXPLORE in refreshing,
                             onRefresh = { viewModel.refresh(MainViewModel.Feed.EXPLORE) },
                             pullState = explorePull,
-                            contentPadding = listPadding,
+                            contentPadding = rootListPadding,
                         )
                         TAB_SEARCH -> SearchScreen(
                             query = query,
@@ -2921,7 +2958,7 @@ private fun BitChordApp(
                             onHistoryRemove = viewModel::removeSearch,
                             onHistoryClear = viewModel::clearSearchHistory,
                             onTypeaheadLongPress = openSongMenu,
-                            contentPadding = listPadding,
+                            contentPadding = rootListPadding,
                         )
                         else -> LibraryScreen(
                             signedIn = signedIn,
@@ -2960,10 +2997,9 @@ private fun BitChordApp(
                             refreshing = MainViewModel.Feed.LIBRARY in refreshing,
                             onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
                             pullState = libraryPull,
-                            contentPadding = listPadding,
+                            contentPadding = rootListPadding,
                             links = libraryLinks(),
                             deviceItems = libraryDeviceItems(downloadedReleases) + localPlaylistItems,
-                            showTitle = false,
                         )
                     }
                 }
@@ -2981,7 +3017,7 @@ private fun BitChordApp(
                     !showAccountScrobbling && !showSources && !showListenTogether &&
                     !showEqualizer && !showSettings
                 val chromePageColor = if (isDetailVisible) {
-                    detailPalette.background
+                    detailChromeColor
                 } else {
                     MaterialTheme.colorScheme.background
                 }
@@ -2989,18 +3025,47 @@ private fun BitChordApp(
                 // artist pages — frost tint, tab accents, back button, etc.
                 CompositionLocalProvider(
                     LocalFrostChrome provides
-                        if (isDetailVisible) detailPalette.toFrostChrome() else null,
+                        if (isDetailVisible) detailChromePalette.toFrostChrome() else null,
                 ) {
                 // This is the bottom floor itself turned upside down, not a
                 // separately maintained approximation. Both edges therefore
                 // share the same curve, height and page-aware colour — including
                 // the white theme background in light mode.
+                //
+                // Held back on a detail page while its hero is still under the
+                // bar: the photograph runs clean up under the status bar, and
+                // a band of page colour laid over it is a fade, not the page.
+                val heroUnderBar = isDetailVisible && detailActiveShelf == null
                 BottomFadeScrim(
                     pageColor = chromePageColor,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .rotate(180f),
+                        .rotate(180f)
+                        .graphicsLayer {
+                            alpha = if (heroUnderBar) detailListState.topFloorAlpha(size.height) else 1f
+                        },
                 )
+
+                val rootTabTitle = when {
+                    showSpotify || showDiscord || showHistory ||
+                        (libraryShowAll != null && detail == null) ||
+                        showAccountScrobbling || showSources || showListenTogether ||
+                        showEqualizer || showSettings || showReplay ||
+                        detail != null || selectedMoodGenre != null -> null
+                    selectedTab == TAB_HOME -> stringResource(R.string.listen_now)
+                    selectedTab == TAB_EXPLORE -> stringResource(R.string.explore)
+                    selectedTab == TAB_LIBRARY -> stringResource(R.string.library)
+                    else -> stringResource(R.string.search)
+                }
+                if (rootTabTitle != null) {
+                    RootTabHeading(
+                        text = rootTabTitle,
+                        listState = currentListState,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = stableStatusBarTopPadding()),
+                    )
+                }
 
                 FrostedTopBar(
                     title = when {
@@ -3026,8 +3091,8 @@ private fun BitChordApp(
                     artworkPageChrome = isReplayVisible || isDetailVisible,
                     backButtonHazeState = hazeState,
                     trailingTitle = if (detail != null && detailActiveShelf != null) detail.title else null,
-                    // Root tabs always show their title in the bar. Pushed pages
-                    // wait until their large in-page heading has scrolled away.
+                    // Pushed pages wait until their large in-page heading has
+                    // scrolled away. Root tabs keep the title on the page.
                     scrolled = when {
                         showSettings || showAccountScrobbling || showSources || showListenTogether ||
                             showEqualizer ||
@@ -3134,6 +3199,7 @@ private fun BitChordApp(
                                         Icons.Rounded.Upgrade,
                                         contentDescription = stringResource(R.string.update_available, update.version),
                                         tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(TopBarIconSize),
                                     )
                                 }
                             }
@@ -3155,6 +3221,7 @@ private fun BitChordApp(
                                         Icons.Rounded.History,
                                         contentDescription = stringResource(R.string.listening_history),
                                         tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(TopBarIconSize),
                                     )
                                 }
                             }
@@ -3170,6 +3237,7 @@ private fun BitChordApp(
                                             Icons.Rounded.Sort,
                                             contentDescription = stringResource(R.string.sort_library),
                                             tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(TopBarIconSize),
                                         )
                                     }
                                     DropdownMenu(
@@ -3226,6 +3294,7 @@ private fun BitChordApp(
                                             Icons.Rounded.Share,
                                             contentDescription = stringResource(R.string.share),
                                             tint = frostChromeColors().content,
+                                            modifier = Modifier.size(TopBarIconSize),
                                         )
                                     }
                                 }
@@ -3260,6 +3329,7 @@ private fun BitChordApp(
                                             Icons.Rounded.MoreVert,
                                             contentDescription = stringResource(R.string.more),
                                             tint = frostChromeColors().content,
+                                            modifier = Modifier.size(TopBarIconSize),
                                         )
                                     }
                                 }
@@ -4664,6 +4734,22 @@ private const val SEEK_END_GUARD_MS = 1_000L
  * between that estimate and a particular page's real header.
  */
 private val DETAIL_TITLE_DROP = 320.dp
+
+/** The same beat the detail page takes to settle into its hero's colour. */
+private const val DETAIL_SOLID_FADE_MS = 220
+
+/**
+ * How much of the top floor a detail page wants, for a floor [floorPx] tall:
+ * none while the header is still below it, so only the hero is under the bar,
+ * ramping in over the floor's nearly transparent lower half so it is all there
+ * by the time rows pass under the bar.
+ */
+private fun LazyListState.topFloorAlpha(floorPx: Float): Float {
+    val header = layoutInfo.visibleItemsInfo.firstOrNull() ?: return 1f
+    if (header.index != 0 || floorPx <= 0f) return 1f
+    val heroBottom = (header.offset + header.size).toFloat()
+    return ((floorPx - heroBottom) / (floorPx / 2f)).coerceIn(0f, 1f)
+}
 
 private const val TAB_HOME = 0
 private const val TAB_EXPLORE = 1

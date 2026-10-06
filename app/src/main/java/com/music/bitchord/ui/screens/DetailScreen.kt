@@ -2,13 +2,18 @@ package com.music.bitchord.ui.screens
 
 import com.music.bitchord.R
 
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -58,6 +63,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,16 +75,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -87,19 +99,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import com.music.bitchord.data.canvas.AppleArtistArt
 import com.music.bitchord.data.canvas.AppleArtistArtRepository
 import com.music.bitchord.data.canvas.CanvasArtwork
@@ -121,7 +130,6 @@ import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.model.isSameTrackAs
 import com.music.bitchord.data.settings.AppSettings
-import com.music.bitchord.ui.components.ArtworkWash
 import com.music.bitchord.ui.components.DownloadedBadge
 import com.music.bitchord.ui.components.ExplicitSongTitle
 import com.music.bitchord.ui.components.LIBRARY_GRID_SPACING
@@ -133,7 +141,11 @@ import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.SongRow
 import com.music.bitchord.ui.components.libraryGrid
 import com.music.bitchord.ui.components.GLASS_EDGE_WIDTH
+import com.music.bitchord.ui.components.FOOT_FADE_START
+import com.music.bitchord.ui.components.HeroFoot
+import com.music.bitchord.ui.components.rememberHeroFoot
 import com.music.bitchord.ui.components.thumbnailBorder
+import com.music.bitchord.ui.components.videoBlur
 import com.music.bitchord.ui.components.detailSkeleton
 import com.music.bitchord.ui.components.topBarContentPadding
 import com.music.bitchord.ui.components.trackColumnWidth
@@ -141,8 +153,9 @@ import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
 import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.ui.player.CanvasArtworkPlayer
+import com.music.bitchord.ui.player.FootBlurSpec
 import com.music.bitchord.ui.theme.ArtworkPalette
-import com.music.bitchord.ui.components.optimizedHazeEffect
+import com.music.bitchord.ui.theme.onSolid
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlin.math.roundToInt
 import java.util.Locale
@@ -222,19 +235,16 @@ private const val TOP_RELEASE_COVER_EDGE_ALPHA = 0.215f
  * the sleeve for the credit line and the Play/Shuffle pair. See
  * [rememberArtworkPalette] for how those are derived and kept legible.
  *
- * It is built in three layers rather than the obvious one, and the order is the
- * whole trick:
+ * It is built in two layers rather than the obvious one:
  *
- *  1. [PageBackground] — the wash and the artwork, and nothing you can read.
- *  2. [MergeBand] — one pane of glass laid across the join, blurring layer 1.
- *  3. The list — titles, buttons and rows, drawn over the glass and so sharp.
+ *  1. [PageBackground] — the page's colour and the artwork, and nothing you can read.
+ *  2. The list — titles, buttons and rows, drawn over it and so never blurred.
  *
- * Blurring only the artwork leaves the artwork and the page as two surfaces
- * that have been made to *resemble* each other, and the eye finds that edge
- * every time. A single blur that samples across the join has no edge to find:
- * the picture, the colour under it and the colour under the song rows are all
- * one smear of the same glass. It is the same thing [TopFadeBlur] does to the
- * head of the screen, pointed at the middle of this one.
+ * The artwork's foot is blurred into the page for real, before it is drawn —
+ * see [HeroFoot] — and the page is painted exactly the colour that blur
+ * settles into. A picture faded out over a page only *resembles* it, and the
+ * eye finds that edge every time; a blur that runs on until it is the page has
+ * no edge to find.
  */
 @Composable
 fun DetailScreen(
@@ -253,6 +263,12 @@ fun DetailScreen(
     listState: LazyListState = rememberLazyListState(),
     activeShelf: HomeShelf? = null,
     onActiveShelfChange: (HomeShelf?) -> Unit = {},
+    /**
+     * The colour the page is painted — what its hero's blur settles into — so
+     * the bars floating over it can be painted the same. Null while there is no
+     * artwork colour yet, when the page is on its palette's own background.
+     */
+    onPageColorChange: (Color?) -> Unit = {},
     /**
      * Holding one of the album cards on an artist page — the same menu the
      * shelves on every other tab open, so a release can be queued from
@@ -322,17 +338,11 @@ fun DetailScreen(
         isArtist && !appleSettled -> null
         else -> page.thumbnailUrl
     }
-    val palette = rememberArtworkPalette(
+    val artPalette = rememberArtworkPalette(
         imageUrl = headerArtUrl,
         keyColors = appleArt?.keyColors(),
     )
     val suggested = page.suggestedSongs
-
-    // What marks a row as already downloaded, tinted from the sleeve like the
-    // rest of the page. Null on any page that is itself a reading of this
-    // device — the Downloads folder, one downloaded playlist — where every row
-    // qualifies and the badge would be decoration rather than information.
-    val downloadedTint = palette.accent.takeUnless { page.browseId.startsWith("local:") }
 
     // Animated cover art on the header, the same feature the player has.
     // Albums only for catalogue canvases; artist pages use Apple's looping
@@ -361,7 +371,45 @@ fun DetailScreen(
         if (isArtist) canvas = artistVideo?.takeIf { canvasEnabled }?.let { CanvasArtwork(url = it) }
     }
 
-    val pageHaze = remember { HazeState() }
+    BoxWithConstraints(modifier.fillMaxSize()) {
+    // The artwork is drawn behind the list rather than in it, so both need
+    // to agree on its height without being able to ask each other. The
+    // width is the page's, so the ratio decides it and both can work it out
+    // alone.
+    //
+    // Measured rather than read off the window. The player runs
+    // full-screen at every window size, so this page's own width in
+    // landscape is the *whole* window. Straight off that width, the ratio hands back
+    // a hero taller than the window itself — the artwork and track list
+    // end up scrolled out of sight beneath what reads as a blank page.
+    // Capping against the window's own height is what keeps the ratio's
+    // math honest once the width it's fed is no longer guaranteed to be
+    // the narrow one it was written for.
+    val artHeight = (maxWidth / if (isArtist) ARTIST_PHOTO_RATIO else SLEEVE_RATIO)
+        .coerceAtMost(maxHeight * 0.6f)
+    val heroWidthPx = constraints.maxWidth
+    val photoHeightPx = with(LocalDensity.current) { artHeight.roundToPx() }
+    // Artist pages resolve [headerArtUrl] themselves — including "nothing
+    // yet" — so there is no falling back to the YouTube photo here.
+    val foot = rememberHeroFoot(
+        headerArtUrl.artworkAt(HEADER_ART_PX),
+        heroWidthPx,
+        photoHeightPx,
+        // Apple's own colour for this photograph, the one their app paints.
+        // An album has none, so its picture's bottom colour is deepened instead.
+        solid = appleArt?.background,
+    )
+    // What the blur settles into once the photograph has been read, and Apple's
+    // colour on its own until then.
+    val pageSolid = foot?.solid ?: appleArt?.let { Color(it.background) }
+    val palette = remember(artPalette, pageSolid) { artPalette.onSolid(pageSolid) }
+    SideEffect { onPageColorChange(pageSolid) }
+
+    // What marks a row as already downloaded, tinted from the sleeve like the
+    // rest of the page. Null on any page that is itself a reading of this
+    // device — the Downloads folder, one downloaded playlist — where every row
+    // qualifies and the badge would be decoration rather than information.
+    val downloadedTint = palette.accent.takeUnless { page.browseId.startsWith("local:") }
 
     AnimatedContent(
         targetState = activeShelf,
@@ -369,37 +417,17 @@ fun DetailScreen(
             fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
         },
         label = "artist_shelf_transition",
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
     ) { targetShelf ->
         if (targetShelf == null) {
-            BoxWithConstraints(Modifier.fillMaxSize().background(palette.wash)) {
-                // The artwork is drawn behind the list rather than in it, so both need
-                // to agree on its height without being able to ask each other. The
-                // width is the page's, so the ratio decides it and both can work it out
-                // alone.
-                //
-                // Measured rather than read off the window. The player runs
-                // full-screen at every window size, so this page's own width in
-                // landscape is the *whole* window. Straight off that width, the ratio hands back
-                // a hero taller than the window itself — the artwork and track list
-                // end up scrolled out of sight beneath what reads as a blank page.
-                // Capping against the window's own height is what keeps the ratio's
-                // math honest once the width it's fed is no longer guaranteed to be
-                // the narrow one it was written for.
-                val artHeight = (maxWidth / if (isArtist) ARTIST_PHOTO_RATIO else SLEEVE_RATIO)
-                    .coerceAtMost(maxHeight * 0.6f)
-
+            Box(Modifier.fillMaxSize()) {
                 PageBackground(
-                    page = page,
-                    palette = palette,
+                    foot = foot,
+                    pageColor = palette.wash,
                     canvas = canvas,
                     artHeight = artHeight,
                     listState = listState,
-                    hazeState = pageHaze,
-                    heroUrl = headerArtUrl,
-                    // Artist pages resolve [headerArtUrl] themselves — including
-                    // "nothing yet" — so do not fall back to the YouTube photo.
-                    fallbackToPageThumbnail = !isArtist,
+                    videoBlur = foot?.videoBlur(heroWidthPx, photoHeightPx),
                     modifier = Modifier.matchParentSize(),
                 )
 
@@ -682,13 +710,14 @@ fun DetailScreen(
 }
 }
 }
+}
 
 /**
  * An album or playlist: the title, credit, meta and action buttons that sit
  * over the foot of the artwork.
  *
- * The artwork itself is not here — [PageBackground] draws it, so that
- * [MergeBand] can blur it without blurring any of this. What this item holds in
+ * The artwork itself is not here — [PageBackground] draws it, blurred foot and
+ * all, behind the list. What this item holds in
  * its place is a spacer of exactly the picture's height, which is what keeps
  * the two in step: the list reserves the room, the background fills it.
  */
@@ -1001,200 +1030,122 @@ private fun ArtistHeader(
 }
 
 /**
- * Everything on a detail page that is colour rather than words: the page wash,
- * and the artwork sitting on top of it.
- *
- * This is the whole of what [MergeBand] blurs, and the reason it is a layer of
- * its own. The artwork used to live in the list's first item, which put it in
- * the same layer as the title and the buttons and the song rows — glass laid
- * over that would have smeared the text along with the picture. Split out, the
- * blur has the join to itself.
- *
- * It carries the artwork's scroll instead of being scrolled: the list owns the
- * gesture and reserves the room, and the picture is offset to follow whatever
- * the list did with item zero. Read in a layer block, so a scroll moves it
- * without recomposing anything.
+ * Everything on a detail page that is colour rather than words: the page's
+ * solid [pageColor], and over it the hero photograph with its blurred foot.
  */
 @Composable
 private fun PageBackground(
-    page: DetailPage,
-    palette: ArtworkPalette,
+    foot: HeroFoot?,
+    pageColor: Color,
     canvas: CanvasArtwork?,
     artHeight: Dp,
     listState: LazyListState,
-    hazeState: HazeState,
-    heroUrl: String? = null,
-    fallbackToPageThumbnail: Boolean = true,
+    videoBlur: FootBlurSpec?,
     modifier: Modifier = Modifier,
 ) {
-    val artUrl = heroUrl ?: page.thumbnailUrl.takeIf { fallbackToPageThumbnail }
-    Box(
-        modifier
-            .clipToBounds()
-            .hazeSource(hazeState),
-    ) {
-        ArtworkWash(palette = palette, modifier = Modifier.matchParentSize())
+    val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val fill by animateColorAsState(
+        targetValue = pageColor,
+        animationSpec = if (reduceAnimation) snap() else tween(PAGE_SOLID_FADE_MS),
+        label = "pageSolid",
+    )
+    // Faded in only when it had to be read first: a hero read before is there
+    // on the page's first frame.
+    val heroAlpha = remember { Animatable(if (foot != null) 1f else 0f) }
+    LaunchedEffect(foot != null) {
+        when {
+            foot == null -> heroAlpha.snapTo(0f)
+            reduceAnimation -> heroAlpha.snapTo(1f)
+            else -> heroAlpha.animateTo(1f, tween(HERO_FADE_MS))
+        }
+    }
+    val clip = canvas?.takeIf {
+        videoBlur != null && !reduceDynamicBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    }
+    val heroScrollPx = rememberHeroScrollPx(listState)
 
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(artHeight)
-                .offset { IntOffset(0, listState.headerTop(artHeight.toPx()).roundToInt()) },
-        ) {
-            AsyncImage(
-                model = artUrl.artworkAt(HEADER_ART_PX),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(palette.elevated),
-            )
-
-            // Above the still art but below both gradients, so the scrim and
-            // the wash that blend the header into the page still sit over it.
-            // Always running: unlike the player's sleeve there is no transport
-            // here to follow, and the page is only up while it's being read.
-            canvas?.let { clip ->
-                CanvasArtworkPlayer(
-                    canvas = clip,
-                    isPlaying = true,
-                    modifier = Modifier.matchParentSize(),
-                )
-            }
-
-            // Settles the foot of the picture onto the colour the page is made
-            // of, so the two sides of the join are already close before the
-            // glass goes over them — a blur averages what it is given and
-            // cannot invent agreement that isn't there. It matters most on a
-            // monochrome sleeve, where the wash is the only thing with a hue.
-            //
-            // Inside this layer, deliberately: drawn above the glass it would
-            // be a hard-edged rectangle of its own.
+    Box(modifier.background(fill).clipToBounds()) {
+        if (foot != null) {
             Box(
                 Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0.55f to Color.Transparent,
-                            1.00f to palette.wash.copy(alpha = 0.88f),
-                        ),
-                    ),
-            )
+                    .fillMaxWidth()
+                    .height(artHeight * (1f + foot.runFraction))
+                    .offset { IntOffset(0, -heroScrollPx.value) },
+            ) {
+                Image(
+                    bitmap = foot.image,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            alpha = heroAlpha.value
+                            // The clip fades on its own. Leaving the still under
+                            // it would fade twice, and the picture would be gone
+                            // before the bottom of the box.
+                            if (clip != null) {
+                                this.clip = true
+                                shape = StillAboveFade(foot.runFraction)
+                            }
+                        },
+                )
+                if (clip != null) {
+                    CanvasArtworkPlayer(
+                        canvas = clip,
+                        isPlaying = true,
+                        footBlur = videoBlur,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+            }
         }
-
     }
 }
 
-/**
- * One pane of glass laid across the join, blurring [PageBackground] through it.
- *
- * Centred on the bottom edge of the artwork, so half of it is over the picture
- * and half over the page below — which is what makes it a merge rather than a
- * fade. A blur samples across its own footprint, so colour from the sleeve is
- * carried down past where the sleeve ends and the page's colour is carried up
- * into it, and the line that used to be there has nothing left to be a line
- * between.
- *
- * Its own two edges are the only ones left to hide, and the mask does that: the
- * band arrives from nothing and leaves to nothing over [MERGE_BAND]'s full
- * height, which is long enough that there is no moment where it starts.
- *
- * Sits between the background and the list, so the title, the buttons and the
- * song rows are drawn on top of it and stay sharp.
- */
-@Composable
-private fun MergeBand(
-    palette: ArtworkPalette,
-    artHeight: Dp,
-    listState: LazyListState,
-    hazeState: HazeState,
-) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    // Asked for no dynamic blur, the page falls back to what the background
-    // does on its own: the sleeve settling onto the wash it is drawn over.
-    if (reduceDynamicBlur) return
-
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(MERGE_BAND)
-            // Placed rather than translated, which for this one matters a great
-            // deal: haze records where it is when it is *placed*, and a
-            // graphicsLayer moves content at draw time, long after. Translated,
-            // the band went on believing it was at the top of the screen — so
-            // it blurred the top of the screen and painted that down here,
-            // which is a blur of the wrong thing and leaves the join intact.
-            .offset {
-                IntOffset(
-                    x = 0,
-                    y = (
-                        listState.headerTop(artHeight.toPx()) +
-                            artHeight.toPx() - MERGE_BAND.toPx() / 2f
-                        ).roundToInt(),
-                )
-            }
-            .optimizedHazeEffect(hazeState) {
-                // Without this the band draws nothing at all.
-                //
-                // Haze defaults to only blurring sources *below* it, which it
-                // decides with `area.zIndex < hazeZIndex` — where hazeZIndex
-                // comes from the nearest enclosing source. This page sits
-                // inside the app's own full-window source, so that value is
-                // 0f; our source is nested inside the same one, so its zIndex
-                // is 0f as well; and `0 < 0` is false. The page's own
-                // background was being filtered out of its own effect, leaving
-                // it with no areas to blur. The bottom fade behind the tab bar
-                // escapes this only because it is drawn outside that source
-                // and so has no zIndex to be compared against.
-                //
-                // [hazeState] is private to this page and holds exactly one
-                // area, so there is nothing here to filter.
-                canDrawArea = { true }
-                blurRadius = MERGE_BLUR
-                // Haze's film grain is uniform across the layer, so it would
-                // show up at the ends as texture over content the mask has
-                // otherwise left alone — exactly the edges it is hiding.
-                noiseFactor = 0f
-                // An empty list falls through to whatever style is in scope, so
-                // "no tint" has to be said as a transparent one. The band is
-                // here to move colour around, not to add any.
-                tints = listOf(HazeTint(Color.Transparent))
-                backgroundColor = palette.wash
-                mask = Brush.verticalGradient(
-                    0.00f to Color.Transparent,
-                    0.50f to Color.Black,
-                    1.00f to Color.Transparent,
-                )
-            },
-    )
+/** Cuts the still off where the fade starts, so a clip's own fade is the only one. */
+private class StillAboveFade(private val runFraction: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val cut = size.height * (FOOT_FADE_START / (1f + runFraction))
+        return Outline.Rectangle(Rect(0f, 0f, size.width, cut.coerceIn(0f, size.height)))
+    }
 }
 
-/**
- * Where the top of the artwork currently is.
- *
- * The list is the one being scrolled; the background only has to agree with it.
- * While the header is item zero and on screen, how far it has been scrolled off
- * the top is exactly the offset the picture behind it needs. Once it isn't,
- * there is nothing to agree with, and everything hanging off this parks two
- * artwork-heights up — far enough that no part of anything comes back down.
- */
-private fun LazyListState.headerTop(artHeightPx: Float): Float =
-    if (firstVisibleItemIndex == 0) -firstVisibleItemScrollOffset.toFloat() else -artHeightPx * 2f
+/** The page settling into its hero's colour once that has been read. */
+private const val PAGE_SOLID_FADE_MS = 220
+
+/** A hero that had to be read first, arriving. */
+private const val HERO_FADE_MS = 240
 
 /**
- * How tall the glass is — generous, because half of its run is spent arriving
- * and half leaving, and a band that reaches full strength quickly has an edge
- * again.
+ * How far the list has scrolled, so the hero behind it stays in step after
+ * the header has left the screen. Parking it off once that happened is what
+ * cut the picture straight to the page colour.
  */
-private val MERGE_BAND = 320.dp
-
-/**
- * Wide enough that nothing of the picture survives where the band is at full
- * strength — not softened detail, none. A blur that leaves shapes behind reads
- * as a blurred photograph, and a blurred photograph next to a flat colour is
- * still two surfaces.
- */
-private val MERGE_BLUR = 100.dp
+@Composable
+private fun rememberHeroScrollPx(listState: LazyListState): State<Int> {
+    return remember(listState) {
+        val heights = mutableMapOf<Int, Int>()
+        var held = 0
+        derivedStateOf {
+            for (item in listState.layoutInfo.visibleItemsInfo) heights[item.index] = item.size
+            var total = 0
+            var known = true
+            for (i in 0 until listState.firstVisibleItemIndex) {
+                val height = heights[i]
+                if (height == null) {
+                    known = false
+                    break
+                }
+                total += height
+            }
+            if (!known) return@derivedStateOf held
+            total += listState.firstVisibleItemScrollOffset
+            held = total
+            total
+        }
+    }
+}
 
 /**
  * Shuffle · Play · Star — the artist page's action row, as Apple Music lays

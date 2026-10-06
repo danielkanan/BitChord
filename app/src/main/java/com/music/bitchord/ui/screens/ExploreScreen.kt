@@ -49,6 +49,7 @@ import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.RootPageTitle
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.ShimmerBox
 import com.music.bitchord.ui.components.feedSkeleton
@@ -65,8 +66,8 @@ fun ExploreScreen(
     pullState: PullToRefreshState,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
-    /** In-page "Explore" heading; FrostedTopBar already shows the tab title. */
-    showTitle: Boolean = false,
+    /** In-page "Explore" heading. It scrolls with the page. */
+    showTitle: Boolean = true,
 ) {
     PullToRefresh(
         refreshing = refreshing,
@@ -82,19 +83,7 @@ fun ExploreScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (showTitle) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.explore),
-                            style = MaterialTheme.typography.displayLarge,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(
-                                start = PAGE_GUTTER,
-                                end = PAGE_GUTTER,
-                                top = 8.dp,
-                                bottom = 14.dp,
-                            ),
-                        )
-                    }
+                    item { RootPageTitle() }
                 }
                 when (state) {
                     UiState.Loading -> item { ExploreSkeletonRows(columns) }

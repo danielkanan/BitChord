@@ -810,8 +810,13 @@ private fun SharedTransitionScope.ExpandedTabs(
                     .width(with(density) { tabWidthPx.toDp() })
                     .height(with(density) { rowSize.height.toDp() })
                     .graphicsLayer {
-                        translationX = animatedIndicatorOffset
-                        scaleX = 1f + lag * STRETCH
+                        val scale = 1f + lag * STRETCH
+                        val visualWidth = tabWidthPx * scale
+                        val minX = (visualWidth - tabWidthPx) / 2f
+                        val maxX = (rowSize.width - (tabWidthPx + visualWidth) / 2f)
+                            .coerceAtLeast(minX)
+                        translationX = animatedIndicatorOffset.coerceIn(minX, maxX)
+                        scaleX = scale
                         scaleY = 1f - lag * STRETCH * SQUASH
                     }
                     .clip(shapes.tabShape)
@@ -847,13 +852,9 @@ private fun SharedTransitionScope.ExpandedTabs(
                         },
                         onHorizontalDrag = { _, delta ->
                             totalDrag += delta
-                            dragOffset = when {
-                                totalDrag > 0 && currentSelectedTabIndex == scope.tabs.lastIndex ->
-                                    totalDrag * 0.25f
-                                totalDrag < 0 && currentSelectedTabIndex == 0 ->
-                                    totalDrag * 0.25f
-                                else -> totalDrag
-                            }
+                            val minDrag = -currentSelectedTabIndex * tabStepPx
+                            val maxDrag = (scope.tabs.lastIndex - currentSelectedTabIndex) * tabStepPx
+                            dragOffset = totalDrag.coerceIn(minDrag, maxDrag)
 
                             val approximateTab =
                                 (currentSelectedTabIndex + dragOffset / tabStepPx)

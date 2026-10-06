@@ -56,6 +56,7 @@ import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.ui.components.LIBRARY_GRID_SPACING
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.RootPageTitle
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.libraryGrid
 import com.music.bitchord.ui.components.librarySkeleton
@@ -118,7 +119,7 @@ fun LibraryScreen(
      * whole. Left off the page entirely while there are none.
      */
     deviceItems: List<ShelfItem>,
-    /** The big "Library" heading; FrostedTopBar already shows the tab title. */
+    /** The big "Library" heading. It scrolls with the page. */
     showTitle: Boolean = true,
 ) {
     val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
@@ -135,14 +136,7 @@ fun LibraryScreen(
             contentPadding = contentPadding,
         ) {
             if (showTitle) {
-                item {
-                    Text(
-                        text = stringResource(R.string.library),
-                        style = MaterialTheme.typography.displayLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                    )
-                }
+                item { RootPageTitle() }
             }
             item(key = "replay") { replay() }
             if (links.isNotEmpty()) {

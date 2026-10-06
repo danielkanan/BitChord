@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.ColorUtils
@@ -75,6 +76,36 @@ data class ArtworkPalette(
  */
 @Immutable
 data class ArtworkKeyColors(val background: Color, val accent: Color)
+
+/**
+ * This palette re-keyed to a page painted [solid] — the hero's page colour —
+ * rather than the tint it was derived for. Null leaves it as it is.
+ *
+ * The text is white. [solid] is a darkened reading of the artwork, the same
+ * darkness Apple paints, so white is the text that reads on it; the accent is
+ * kept only while it still reads too.
+ */
+fun ArtworkPalette.onSolid(solid: Color?): ArtworkPalette {
+    if (solid == null) return this
+    val luminance = relativeLuminance(solid.toArgb())
+    return copy(
+        background = solid,
+        wash = solid,
+        elevated = lerp(solid, Color.White, 0.10f),
+        accent = accent.takeIf {
+            contrast(relativeLuminance(it.toArgb()), luminance) >= MIN_ACCENT_CONTRAST
+        } ?: Color.White,
+        onBackground = Color.White,
+        onBackgroundVariant = Color.White.copy(alpha = 0.80f),
+        divider = Color.White.copy(alpha = 0.12f),
+    )
+}
+
+/** WCAG contrast ratio between two relative luminances, either way round. */
+private fun contrast(a: Float, b: Float): Float = (maxOf(a, b) + 0.05f) / (minOf(a, b) + 0.05f)
+
+/** WCAG's floor for large text and icons — the accent's titles and glyphs. */
+private const val MIN_ACCENT_CONTRAST = 3f
 
 /**
  * Pulls [ArtworkPalette] out of the artwork at [imageUrl], or out of

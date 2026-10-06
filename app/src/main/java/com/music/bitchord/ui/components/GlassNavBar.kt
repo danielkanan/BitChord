@@ -122,7 +122,13 @@ fun GlassNavBar(
     // A factory, not a value — see the note in FloatingTabBar's header. Each of
     // the three surfaces gets its own frost modifier and so its own shape cache.
     val glassSurface: @Composable () -> Modifier = {
-        Modifier.frostedSurface(shape = pillShape, hazeState = hazeState)
+        Modifier.frostedSurface(
+            shape = pillShape,
+            hazeState = hazeState,
+            // On a coloured page the pills take that colour, a step darker
+            // than the wash. Elsewhere they stay the dark frost.
+            tint = if (LocalFrostChrome.current != null) chrome.tint.navbarTint() else null,
+        )
     }
 
     FloatingTabBar(
@@ -214,6 +220,7 @@ fun GlassNavBar(
                     )
                 },
                 onClick = onClick,
+                indication = null,
             )
         }
     }
