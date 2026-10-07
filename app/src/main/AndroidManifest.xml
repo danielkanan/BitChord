@@ -195,26 +195,29 @@
                 <data android:host="youtu.be" />
             </intent-filter>
 
-            <!-- Public Listen Together invites. autoVerify makes a tap open
-                 Velora directly once the domain publishes its assetlinks
-                 association for the production signing certificate. -->
-            <intent-filter android:autoVerify="true">
+            <!-- Public Listen Together invites (BitChord-hosted). autoVerify will
+                 not claim the domain for Velora's signing cert; the filter still
+                 lets the user open invites with Velora. -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="velora.kushagrasingh.in"
+                    android:host="bitchord.kushagrasingh.in"
                     android:pathPattern="/invite/......" />
             </intent-filter>
 
-            <!-- Custom scheme for Listen Together invites on custom server deployments. -->
+            <!-- Custom schemes: Velora shares + BitChord landing-page deep links. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="velora"
+                    android:host="party" />
+                <data
+                    android:scheme="bitchord"
                     android:host="party" />
             </intent-filter>
 

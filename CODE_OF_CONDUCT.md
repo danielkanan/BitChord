@@ -15,8 +15,7 @@ The following behaviors are unacceptable within the project:
 - Unwelcome sexual attention, advances, or inappropriate language.
 
 ## Reporting
-If you experience or witness unacceptable behavior, report it privately to the project maintainer:
-- Email: `kushagrasinghx@gmail.com`
+If you experience or witness unacceptable behavior, report it privately to the project maintainer via a GitHub issue or security advisory on [danielkanan/Velora](https://github.com/danielkanan/Velora).
 
 Reports will be handled privately and with appropriate discretion.
 

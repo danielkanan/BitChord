@@ -8,9 +8,9 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/KabirSinghBhatia/Velora/backend/clock"
-	"github.com/KabirSinghBhatia/Velora/backend/codes"
-	"github.com/KabirSinghBhatia/Velora/backend/config"
+	"github.com/danielkanan/Velora/backend/clock"
+	"github.com/danielkanan/Velora/backend/codes"
+	"github.com/danielkanan/Velora/backend/config"
 )
 
 // PartyError represents an error with an HTTP status code and wire error code.

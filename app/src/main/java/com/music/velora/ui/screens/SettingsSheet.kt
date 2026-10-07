@@ -1345,20 +1345,8 @@ fun SettingsScreen(
                         textDecoration = TextDecoration.Underline,
                     ),
                 )
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx/Velora", linkStyles)) {
+                withLink(LinkAnnotation.Url("https://github.com/danielkanan/Velora", linkStyles)) {
                     append("GitHub")
-                }
-                append("  ")
-                withLink(LinkAnnotation.Url("https://github.com/kushagrasinghx", linkStyles)) {
-                    append("Developer")
-                }
-                append("  ")
-                withLink(LinkAnnotation.Url("https://discord.gg/pDdKfrdHY6", linkStyles)) {
-                    append("Discord")
-                }
-                append("  ")
-                withLink(LinkAnnotation.Url("https://velora.kushagrasingh.in/", linkStyles)) {
-                    append("Website")
                 }
                 append("\n~YouTube Music & Listen Together Backend")
             },

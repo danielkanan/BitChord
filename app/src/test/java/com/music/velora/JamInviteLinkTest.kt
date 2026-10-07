@@ -23,7 +23,7 @@ class JamInviteLinkTest {
     fun `parses and normalizes a public invite`() {
         assertEquals(
             "A1B2C3",
-            JamInviteLink.parse("https://velora.kushagrasingh.in/invite/a1b2c3"),
+            JamInviteLink.parse("https://bitchord.kushagrasingh.in/invite/a1b2c3"),
         )
     }
 
@@ -31,25 +31,25 @@ class JamInviteLinkTest {
     fun `accepts query parameters without making them part of the code`() {
         assertEquals(
             "ABC123",
-            JamInviteLink.parse("https://velora.kushagrasingh.in/invite/ABC123?from=share"),
+            JamInviteLink.parse("https://bitchord.kushagrasingh.in/invite/ABC123?from=share"),
         )
     }
 
     @Test
     fun `rejects other hosts schemes paths and malformed codes`() {
-        assertNull(JamInviteLink.parse("http://velora.kushagrasingh.in/invite/ABC123"))
+        assertNull(JamInviteLink.parse("http://bitchord.kushagrasingh.in/invite/ABC123"))
         assertNull(JamInviteLink.parse("https://example.com/invite/ABC123"))
-        assertNull(JamInviteLink.parse("https://velora.kushagrasingh.in/"))
-        assertNull(JamInviteLink.parse("https://velora.kushagrasingh.in/download"))
-        assertNull(JamInviteLink.parse("https://velora.kushagrasingh.in/invite/ABC123/"))
-        assertNull(JamInviteLink.parse("https://velora.kushagrasingh.in/invite/ABC123/extra"))
-        assertNull(JamInviteLink.parse("https://velora.kushagrasingh.in/invite/TOO-LONG"))
+        assertNull(JamInviteLink.parse("https://bitchord.kushagrasingh.in/"))
+        assertNull(JamInviteLink.parse("https://bitchord.kushagrasingh.in/download"))
+        assertNull(JamInviteLink.parse("https://bitchord.kushagrasingh.in/invite/ABC123/"))
+        assertNull(JamInviteLink.parse("https://bitchord.kushagrasingh.in/invite/ABC123/extra"))
+        assertNull(JamInviteLink.parse("https://bitchord.kushagrasingh.in/invite/TOO-LONG"))
     }
 
     @Test
     fun `builds the canonical share URL`() {
         assertEquals(
-            "https://velora.kushagrasingh.in/invite/ABC123",
+            "https://bitchord.kushagrasingh.in/invite/ABC123",
             JamInviteLink.url("abc123"),
         )
     }
@@ -65,11 +65,11 @@ class JamInviteLinkTest {
             JamInviteLink.url("abc123", "https://my-party.onrender.com/"),
         )
         assertEquals(
-            "https://velora.kushagrasingh.in/invite/ABC123",
+            "https://bitchord.kushagrasingh.in/invite/ABC123",
             JamInviteLink.url("abc123", ""),
         )
         assertEquals(
-            "https://velora.kushagrasingh.in/invite/ABC123",
+            "https://bitchord.kushagrasingh.in/invite/ABC123",
             JamInviteLink.url("abc123", null),
         )
     }
@@ -101,8 +101,15 @@ class JamInviteLinkTest {
     }
 
     @Test
+    fun `parses BitChord scheme invite from their landing page`() {
+        val invite = JamInviteLink.parseInvite("bitchord://party/a1b2c3?server=https%3A%2F%2Fbitchord-listen-together.onrender.com")
+        assertEquals("A1B2C3", invite?.code)
+        assertEquals("https://bitchord-listen-together.onrender.com", invite?.serverUrl)
+    }
+
+    @Test
     fun `parses web invite with server parameter`() {
-        val invite = JamInviteLink.parseInvite("https://velora.kushagrasingh.in/invite/ABC123?server=https%3A%2F%2Fcustom.example.com")
+        val invite = JamInviteLink.parseInvite("https://bitchord.kushagrasingh.in/invite/ABC123?server=https%3A%2F%2Fcustom.example.com")
         assertEquals("ABC123", invite?.code)
         assertEquals("https://custom.example.com", invite?.serverUrl)
     }
@@ -135,7 +142,7 @@ class JamInviteLinkTest {
         } else {
             JamInviteLink.url(code, activePartyHost)
         }
-        assertEquals("https://velora.kushagrasingh.in/invite/JAM001", link)
+        assertEquals("https://bitchord.kushagrasingh.in/invite/JAM001", link)
     }
 
     @Test
@@ -148,7 +155,7 @@ class JamInviteLinkTest {
             JamInviteLink.url(code, customHost)
         }
         assertEquals("https://custom.jam.example.com/invite/JAM002", link)
-        assertNotEquals("https://velora.kushagrasingh.in/invite/JAM002", link)
+        assertNotEquals("https://bitchord.kushagrasingh.in/invite/JAM002", link)
     }
 
     @Test
@@ -165,7 +172,7 @@ class JamInviteLinkTest {
 
     @Test
     fun `invariant 4 explicit invite target ignores idle fallback`() {
-        val explicitInvite = "https://velora.kushagrasingh.in/invite/JAM004?server=https%3A%2F%2Ftarget.party.com"
+        val explicitInvite = "https://bitchord.kushagrasingh.in/invite/JAM004?server=https%3A%2F%2Ftarget.party.com"
         val parsed = JamInviteLink.parseInvite(explicitInvite)
         assertEquals("JAM004", parsed?.code)
         assertEquals("https://target.party.com", parsed?.serverUrl)

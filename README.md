@@ -11,18 +11,15 @@
 
 <br/>
 
-[![Latest release](https://img.shields.io/github/v/release/kushagrasinghx/Velora?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/Velora/releases)
-[![License](https://img.shields.io/github/license/kushagrasinghx/Velora?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/Velora/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/kushagrasinghx/Velora/total?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/Velora/releases)
+[![Latest release](https://img.shields.io/github/v/release/danielkanan/Velora?style=for-the-badge&labelColor=0d1117)](https://github.com/danielkanan/Velora/releases)
+[![License](https://img.shields.io/github/license/danielkanan/Velora?style=for-the-badge&labelColor=0d1117)](https://github.com/danielkanan/Velora/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/danielkanan/Velora/total?style=for-the-badge&labelColor=0d1117)](https://github.com/danielkanan/Velora/releases)
 
 <br/>
 
-[**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
+[**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Disclaimer**](#disclaimer)
 
 <br/>
-
-<a href="https://trendshift.io/repositories/177639?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/177639/daily?language=Kotlin" alt="kushagrasinghx%2FVelora | Trendshift" width="250" height="55"/></a>
-<a href="https://trendshift.io/repositories/177639?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/177639/weekly?language=Kotlin" alt="kushagrasinghx%2FVelora | Trendshift" width="250" height="55"/></a>
 
 </div>
 
@@ -85,7 +82,7 @@
 
 <h1><a id="download"></a>Download</h1>
 
-Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx/Velora/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
+Grab the latest signed APK from the [Releases](https://github.com/danielkanan/Velora/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
 
 </div>
 
@@ -98,23 +95,6 @@ Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx
 We welcome contributions to Velora! Please review our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a Pull Request.
 
 [**Contributing Guide**](CONTRIBUTING.md) · [**Code of Conduct**](CODE_OF_CONDUCT.md) · [**Maintainers**](MAINTAINERS.md) · [**Additional Docs**](ADDITIONAL.md)
-
-</div>
-
----
-
-<div align="center">
-
-<h1><a id="support"></a>Support</h1>
-
-Velora is free and always will be — if it's earned a spot in your rotation, you can chip in here:
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/kushagrasinghx)
-[![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/kuxhagrasingh)
-
-<br/>
-<br/>
-<img src="upi_support.jpg" alt="UPI Support" width="250" />
 
 </div>
 

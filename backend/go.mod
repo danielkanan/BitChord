@@ -1,4 +1,4 @@
-module github.com/KabirSinghBhatia/Velora/backend
+module github.com/danielkanan/Velora/backend
 
 go 1.27.0
 

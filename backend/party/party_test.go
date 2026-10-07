@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/KabirSinghBhatia/Velora/backend/codes"
-	"github.com/KabirSinghBhatia/Velora/backend/config"
+	"github.com/danielkanan/Velora/backend/codes"
+	"github.com/danielkanan/Velora/backend/config"
 )
 
 func TestCodeNormalisation(t *testing.T) {

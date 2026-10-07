@@ -16,11 +16,12 @@ data class ParsedJamInvite(
 /** Relays a Velora web or scheme invite from [com.music.velora.MainActivity] to Compose. */
 object JamInviteLink {
 
-    const val ORIGIN = "https://velora.kushagrasingh.in"
+    /** Public BitChord invite site — Velora still uses their hosted Listen Together stack. */
+    const val ORIGIN = "https://bitchord.kushagrasingh.in"
 
     private const val EXTRA_CONSUMED = "velora.jamInviteConsumed"
-    private const val HOST = "velora.kushagrasingh.in"
-    private const val CUSTOM_SCHEME = "velora"
+    private const val HOST = "bitchord.kushagrasingh.in"
+    private val APP_SCHEMES = setOf("velora", "bitchord")
     private const val CUSTOM_HOST = "party"
 
     private val _pending = MutableStateFlow<ParsedJamInvite?>(null)
@@ -49,8 +50,8 @@ object JamInviteLink {
 
     /**
      * Parses an incoming invite:
-     * 1. velora://party/<CODE>?server=<SERVER>
-     * 2. https://velora.kushagrasingh.in/invite/<CODE>?server=<SERVER>
+     * 1. velora://party/<CODE> or bitchord://party/<CODE>?server=<SERVER>
+     * 2. https://bitchord.kushagrasingh.in/invite/<CODE>?server=<SERVER>
      */
     fun parseInvite(value: String?): ParsedJamInvite? {
         val uri = runCatching { URI(value ?: return null) }.getOrNull() ?: return null
@@ -59,15 +60,15 @@ object JamInviteLink {
         val query = uri.rawQuery
         val server = extractQueryParam(query, "server")?.let { sanitizeServerUrl(it) }
 
-        // 1. Custom scheme: velora://party/<CODE> or velora://party?code=<CODE>
-        if (scheme == CUSTOM_SCHEME && host == CUSTOM_HOST) {
+        // 1. Custom scheme: velora:// or bitchord://party/<CODE>
+        if (scheme in APP_SCHEMES && host == CUSTOM_HOST) {
             val pathPart = uri.path.orEmpty().trim('/').takeIf { it.isNotBlank() }
             val candidate = pathPart ?: extractQueryParam(query, "code") ?: return null
             val code = cleanCode(candidate) ?: return null
             return ParsedJamInvite(code = code, serverUrl = server)
         }
 
-        // 2. Official web domain: https://velora.kushagrasingh.in/invite/<CODE>
+        // 2. Public BitChord invite site (shared Listen Together host)
         if (scheme == "https" && host == HOST) {
             val match = INVITE_PATH.matchEntire(uri.path.orEmpty()) ?: return null
             val code = match.groupValues[1].uppercase()
@@ -126,4 +127,3 @@ object JamInviteLink {
 
     private val INVITE_PATH = Regex("""/invite/([A-Za-z0-9]{${ListenTogether.CODE_LENGTH}})""")
 }
-

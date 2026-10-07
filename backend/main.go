@@ -18,12 +18,12 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/KabirSinghBhatia/Velora/backend/clock"
-	"github.com/KabirSinghBhatia/Velora/backend/codes"
-	"github.com/KabirSinghBhatia/Velora/backend/config"
-	"github.com/KabirSinghBhatia/Velora/backend/hub"
-	"github.com/KabirSinghBhatia/Velora/backend/party"
-	"github.com/KabirSinghBhatia/Velora/backend/protocol"
+	"github.com/danielkanan/Velora/backend/clock"
+	"github.com/danielkanan/Velora/backend/codes"
+	"github.com/danielkanan/Velora/backend/config"
+	"github.com/danielkanan/Velora/backend/hub"
+	"github.com/danielkanan/Velora/backend/party"
+	"github.com/danielkanan/Velora/backend/protocol"
 )
 
 var (
@@ -633,7 +633,7 @@ var inviteTemplate = template.Must(template.New("invite").Parse(`<!DOCTYPE html>
             <a id="joinBtn" href="{{.IntentURI}}" class="btn">Join Party in Velora</a>
             <p class="footer-note">
                 Didn’t open automatically? Tap the button above.<br>
-                Don't have Velora yet? <a href="https://github.com/kushagrasinghx/Velora/releases" target="_blank" rel="noopener">Download it here</a>.
+                Don't have Velora yet? <a href="https://github.com/danielkanan/Velora/releases" target="_blank" rel="noopener">Download it here</a>.
             </p>
             <script>
                 var intentUri = {{.IntentURI}};

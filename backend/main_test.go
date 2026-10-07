@@ -13,8 +13,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/KabirSinghBhatia/Velora/backend/config"
-	"github.com/KabirSinghBhatia/Velora/backend/protocol"
+	"github.com/danielkanan/Velora/backend/config"
+	"github.com/danielkanan/Velora/backend/protocol"
 )
 
 func setupTestServer() *httptest.Server {
