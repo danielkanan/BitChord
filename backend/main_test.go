@@ -13,8 +13,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/KabirSinghBhatia/BitChord/backend/config"
-	"github.com/KabirSinghBhatia/BitChord/backend/protocol"
+	"github.com/KabirSinghBhatia/Velora/backend/config"
+	"github.com/KabirSinghBhatia/Velora/backend/protocol"
 )
 
 func setupTestServer() *httptest.Server {
@@ -326,7 +326,7 @@ func TestInviteLanding(t *testing.T) {
 	_, _ = buf.ReadFrom(resActive.Body)
 	content := buf.String()
 
-	expectedDeepLinkPrefix := "bitchord://party/" + code
+	expectedDeepLinkPrefix := "velora://party/" + code
 	if !strings.Contains(content, expectedDeepLinkPrefix) {
 		t.Errorf("Expected HTML content to contain deep link %s", expectedDeepLinkPrefix)
 	}
