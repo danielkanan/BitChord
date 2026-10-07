@@ -5,6 +5,8 @@
 
 <img src="Logo.png" alt="Velora app icon" width="200" />
 
+<hr />
+
 ### Aesthetic YouTube Music Client
 
 <br/>
