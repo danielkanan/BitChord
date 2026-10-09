@@ -30,8 +30,8 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Downloading
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Person
@@ -269,7 +269,7 @@ fun SongActionsSheet(
 
         if (signedIn && !isOffline) {
             ActionRow(
-                icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                icon = if (liked) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                 label = if (liked) stringResource(R.string.remove_from_liked) else stringResource(R.string.like),
                 tint = if (liked) palette.accent else null,
                 accent = palette.accent,
@@ -674,7 +674,7 @@ private fun sleepTimerCountdown(): String? {
  * two sheets read as the same control rather than as two lists that happen to
  * look alike.
  *
- * [tint] is for rows whose icon carries state — a filled heart on a liked
+ * [tint] is for rows whose icon carries state — a filled star on a liked
  * track — and is otherwise the ordinary foreground. [accent] colours the
  * trailing [value], and defaults to the app's own red: a sheet tinted from
  * artwork passes the artwork's accent instead, so the row belongs to the sheet

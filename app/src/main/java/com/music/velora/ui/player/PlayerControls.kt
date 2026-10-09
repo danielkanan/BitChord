@@ -653,8 +653,7 @@ internal fun PlayerActionRow(
  *
  * [active] brightens the disc rather than only the glyph: this sits on album
  * artwork of any colour, and a white icon on a white-ish sleeve has no tint
- * change left to make. The filled heart carries the state as a shape too —
- * see [VeloraIcons.HeartFilled].
+ * change left to make. The filled star carries the state as a shape too.
  */
 @Composable
 internal fun CircleGlyph(

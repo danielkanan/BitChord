@@ -245,7 +245,8 @@ private val seedCache = object : LinkedHashMap<String, Seed>(0, 0.75f, true) {
 /** Deep enough to cover a session's browsing without holding a screenful of colours. */
 private const val SEED_CACHE_ENTRIES = 128
 
-private const val PALETTE_PX = 128
+/** Large enough to preserve hue on wide hero art; still a single decode. */
+private const val PALETTE_PX = 256
 
 /** Short: this is a surface settling into its colour, not an effect in itself. */
 private const val TINT_FADE_MS = 260
@@ -269,20 +270,19 @@ private fun ArtworkKeyColors.toSeed() = Seed(
 )
 
 private fun seedOf(bitmap: Bitmap): Seed? {
-    fun swatches(builder: Palette.Builder) =
-        builder.maximumColorCount(SWATCH_COUNT).generate().swatches
-
     // The default filter deliberately throws away near-black and near-white.
     // That is useful while looking for an accent, but it is the wrong answer
     // to "what colour is this page mostly made of?" A dark photograph would
     // otherwise be reduced to whatever warm face or tiny coloured detail
     // survived the filter, and a monochrome sleeve to an anti-aliased fringe.
     // Both cases used to turn into the same maroon page.
-    val all = swatches(Palette.from(bitmap).clearFilters())
+    val unfiltered = Palette.from(bitmap).clearFilters().maximumColorCount(SWATCH_COUNT).generate()
+    val all = unfiltered.swatches
     if (all.isEmpty()) return null
-    val accentCandidates = swatches(Palette.from(bitmap)).ifEmpty { all }
+    val filtered = Palette.from(bitmap).maximumColorCount(SWATCH_COUNT).generate()
+    val accentCandidates = filtered.swatches.ifEmpty { all }
 
-    val dominant = all.maxBy { it.population }
+    val dominant = populationWeightedColor(all, topN = 5)
     // The accent has to earn its place twice over: a colour nobody sees enough
     // of reads as arbitrary, and a grey one isn't an accent at all. Scoring on
     // saturation against the *square root* of population is what stops a sleeve
@@ -290,14 +290,48 @@ private fun seedOf(bitmap: Bitmap): Seed? {
     val vibrant = accentCandidates.maxBy { swatch ->
         val hsl = FloatArray(3).also { ColorUtils.colorToHSL(swatch.rgb, it) }
         hsl[1] * sqrt(swatch.population.toFloat())
+    }.let { Color(it.rgb) }
+    val vibrantFromApi = (
+        filtered.vibrantSwatch ?: filtered.lightVibrantSwatch ?: filtered.mutedSwatch
+    )?.rgb?.let { Color(it) }
+    val accent = when {
+        vibrantFromApi != null && ColorUtils.calculateLuminance(vibrantFromApi.toArgb()) > 0.08 ->
+            blendToward(vibrant, vibrantFromApi, 0.35f)
+        else -> vibrant
     }
     return Seed(
-        dominant = Color(dominant.rgb),
-        vibrant = Color(vibrant.rgb),
+        dominant = dominant,
+        vibrant = accent,
         edge = bitmap.bottomEdgeColor(),
         topBandLuminance = bitmap.topBandRelativeLuminance(),
     )
 }
+
+/** Mean colour of the most common swatches — closer to what the eye reads than one peak. */
+private fun populationWeightedColor(swatches: List<Palette.Swatch>, topN: Int): Color {
+    val top = swatches.sortedByDescending { it.population }.take(topN)
+    if (top.isEmpty()) return Color.Black
+    var total = 0L
+    var red = 0.0
+    var green = 0.0
+    var blue = 0.0
+    for (swatch in top) {
+        val pop = swatch.population.coerceAtLeast(1)
+        total += pop
+        red += ((swatch.rgb shr 16) and 0xFF) * pop
+        green += ((swatch.rgb shr 8) and 0xFF) * pop
+        blue += (swatch.rgb and 0xFF) * pop
+    }
+    val n = total.coerceAtLeast(1)
+    return Color(
+        red = (red / n).toInt().coerceIn(0, 255),
+        green = (green / n).toInt().coerceIn(0, 255),
+        blue = (blue / n).toInt().coerceIn(0, 255),
+    )
+}
+
+private fun blendToward(base: Color, toward: Color, fraction: Float): Color =
+    lerp(base, toward, fraction.coerceIn(0f, 1f))
 
 private const val SWATCH_COUNT = 24
 

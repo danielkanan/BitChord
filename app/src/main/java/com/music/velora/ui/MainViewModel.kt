@@ -2546,6 +2546,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.browseId == browseId && it.songs is UiState.Loading
             } == true
         ) return
+        val stack = _detailStack.value
+        val existingIndex = stack.indexOfLast { it.browseId == browseId }
+        if (existingIndex >= 0) {
+            if (existingIndex < stack.size - 1) {
+                // Player / menu opened a page that is already underneath — pop
+                // back to it instead of stacking a second copy that shares the
+                // same list scroll state and desyncs the hero while it reloads.
+                _detailStack.value = stack.take(existingIndex + 1)
+                return
+            }
+            // Already on this page (e.g. Now Playing → Go to artist).
+            if (stack.last().songs !is UiState.Loading) return
+        }
         if (browseId.startsWith(SPOTIFY_PAGE_PREFIX)) {
             openSpotifyPage(browseId, title, subtitle, thumbnailUrl)
             return

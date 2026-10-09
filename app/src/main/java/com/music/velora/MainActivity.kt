@@ -258,6 +258,7 @@ import com.music.velora.data.YtMusicRepository
 import com.music.velora.ui.player.NowPlayingScreen
 import com.music.velora.ui.screens.DetailScreen
 import com.music.velora.ui.screens.rememberDetailPageListState
+import com.music.velora.ui.screens.syncDetailPageScrollMemory
 import com.music.velora.ui.screens.ExploreScreen
 import com.music.velora.ui.screens.LocalMusicScreen
 import com.music.velora.ui.screens.HomeScreen
@@ -686,6 +687,7 @@ private fun VeloraApp(
     var detailStackSizeSeen by remember { mutableIntStateOf(0) }
     LaunchedEffect(detailStack) {
         val stack = detailStack
+        syncDetailPageScrollMemory(stack.map { it.browseId }.toSet())
         val current = stack.lastOrNull()
         when {
             current == null -> {

@@ -43,6 +43,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -267,6 +268,38 @@ private const val TOP_RELEASE_COVER_EDGE_ALPHA = 0.215f
  */
 private val detailPageListStates = mutableMapOf<String, LazyListState>()
 
+/** Artist "Show all" grids — keyed by [artistShelfGridKey]. */
+private val artistShelfGridStates = mutableMapOf<String, LazyGridState>()
+
+private fun artistShelfGridKey(artistBrowseId: String, shelf: HomeShelf): String =
+    "$artistBrowseId:${shelf.title}"
+
+/**
+ * Drops scroll memory for detail pages that are no longer on [activeBrowseIds].
+ * Called when the stack changes so leaving an album and opening it again starts
+ * at the top instead of reusing a parked [LazyListState] and hero offset.
+ */
+fun syncDetailPageScrollMemory(activeBrowseIds: Set<String>) {
+    detailPageListStates.keys.toList().forEach { id ->
+        if (id !in activeBrowseIds) detailPageListStates.remove(id)
+    }
+    heroScrollCacheByBrowseId.keys.toList().forEach { id ->
+        if (id !in activeBrowseIds) heroScrollCacheByBrowseId.remove(id)
+    }
+    artistShelfGridStates.keys.toList().forEach { key ->
+        val artistId = key.substringBefore(':')
+        if (artistId !in activeBrowseIds) artistShelfGridStates.remove(key)
+    }
+}
+
+@Composable
+private fun rememberArtistShelfGridState(artistBrowseId: String, shelf: HomeShelf): LazyGridState {
+    val key = artistShelfGridKey(artistBrowseId, shelf)
+    return remember(key) {
+        artistShelfGridStates.getOrPut(key) { LazyGridState() }
+    }
+}
+
 @Composable
 fun rememberDetailPageListState(browseId: String): LazyListState {
     return remember(browseId) {
@@ -454,23 +487,44 @@ fun DetailScreen(
     // When the track list replaces the loading skeleton the column height can
     // jump enough that a few Samsung builds keep a stale offset and refuse to
     // scroll — park at the top once real content is on screen.
-    var artistSongsWereLoading by remember(page.browseId) {
-        mutableStateOf(isArtist && page.songs is UiState.Loading)
+    val songsLoading = page.songs is UiState.Loading
+    var tracksWereLoading by remember(page.browseId) {
+        mutableStateOf(songsLoading)
     }
-    LaunchedEffect(page.songs) {
+    LaunchedEffect(page.songs, page.browseId) {
+        fun resetHeroScrollCache() {
+            heroScrollCacheByBrowseId[page.browseId]?.let { cache ->
+                cache.heldScrollPx = 0
+                cache.itemHeightsPx.clear()
+            }
+        }
         when (page.songs) {
-            is UiState.Loading -> artistSongsWereLoading = isArtist
-            else -> if (artistSongsWereLoading && isArtist) {
-                artistSongsWereLoading = false
-                listState.scrollToItem(0)
+            is UiState.Loading -> {
+                tracksWereLoading = true
+                resetHeroScrollCache()
+                listState.scrollToItem(0, 0)
+            }
+            else -> if (tracksWereLoading) {
+                tracksWereLoading = false
+                resetHeroScrollCache()
+                listState.scrollToItem(0, 0)
             }
         }
     }
 
-    // Kept outside the shelf transition: [PageBackground] is torn down while
-    // "Show all" is open, and its scroll cache used to reset to zero on the way
-    // back — the hero then sat at the top while the list was still scrolled down.
-    val heroScrollPx = rememberHeroScrollPx(listState, page.browseId)
+    val density = LocalDensity.current
+    val maxHeroScrollPx = remember(artHeight, foot, density) {
+        with(density) {
+            val run = foot?.runFraction ?: 0f
+            (artHeight * (1f + run)).roundToPx()
+        }
+    }
+    val heroScrollPx = rememberHeroScrollPx(
+        listState = listState,
+        browseId = page.browseId,
+        maxScrollPx = maxHeroScrollPx,
+        freezeScroll = songsLoading,
+    )
     LaunchedEffect(page.browseId, activeShelf) {
         if (!isArtist || activeShelf != null) return@LaunchedEffect
         val index = listState.firstVisibleItemIndex
@@ -478,42 +532,57 @@ fun DetailScreen(
         listState.scrollToItem(index, offset)
     }
     LaunchedEffect(page.browseId) {
-        if (isArtist) return@LaunchedEffect
-        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+        if (page.songs is UiState.Loading) {
+            listState.scrollToItem(0, 0)
+            heroScrollCacheByBrowseId[page.browseId]?.let { cache ->
+                cache.heldScrollPx = 0
+                cache.itemHeightsPx.clear()
+            }
+        } else if (
+            listState.firstVisibleItemIndex == 0 &&
+            listState.firstVisibleItemScrollOffset == 0
+        ) {
             heroScrollCacheByBrowseId[page.browseId]?.heldScrollPx = 0
         }
     }
+    Box(Modifier.fillMaxSize()) {
+        // Kept outside the shelf fade so returning from "Show all" does not
+        // remount the hero at scroll zero while the list is still partway down.
+        if (activeShelf == null) {
+            PageBackground(
+                foot = foot,
+                pageColor = palette.wash,
+                canvas = canvas,
+                artHeight = artHeight,
+                heroScrollPx = heroScrollPx,
+                videoBlur = foot?.videoBlur(heroWidthPx, photoHeightPx),
+                chromeHazeState = chromeHazeState,
+                expectsHeaderVideo = expectsHeaderVideo,
+                onHeaderVideoActive = onHeaderVideoActive,
+                modifier = Modifier
+                    .matchParentSize()
+                    .zIndex(0f),
+            )
+        }
 
-    AnimatedContent(
-        targetState = activeShelf,
-        transitionSpec = {
-            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
-        },
-        label = "artist_shelf_transition",
-        modifier = Modifier.fillMaxSize(),
-    ) { targetShelf ->
-        if (targetShelf == null) {
-            Box(Modifier.fillMaxSize()) {
-                PageBackground(
-                    foot = foot,
-                    pageColor = palette.wash,
-                    canvas = canvas,
-                    artHeight = artHeight,
-                    heroScrollPx = heroScrollPx,
-                    videoBlur = foot?.videoBlur(heroWidthPx, photoHeightPx),
-                    chromeHazeState = chromeHazeState,
-                    expectsHeaderVideo = expectsHeaderVideo,
-                    onHeaderVideoActive = onHeaderVideoActive,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .zIndex(0f),
-                )
-
+        AnimatedContent(
+            targetState = activeShelf,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+            },
+            label = "artist_shelf_transition",
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(1f),
+        ) { targetShelf ->
+            if (targetShelf == null) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(1f),
+                    modifier = Modifier.fillMaxSize(),
+                    // Skeleton rows sit below the header; scrolling while they are
+                    // still placeholders desyncs the hero and header clip from the
+                    // list until real content lands.
+                    userScrollEnabled = !songsLoading,
                     // Both artist photos and release artwork run edge-to-edge up under
                     // the glass bar — the image is the top of the page, not a card on it.
                     contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
@@ -818,20 +887,20 @@ fun DetailScreen(
                 }
             }
             if (isArtist) aboutItem()
+                }
+            } else {
+                ArtistShelfGridPage(
+                    artistBrowseId = page.browseId,
+                    shelf = targetShelf,
+                    palette = palette,
+                    onItemClick = onSectionItemClick,
+                    onItemLongPress = onSectionItemLongPress,
+                    contentPadding = contentPadding,
+                )
+            }
         }
-
     }
-} else {
-    ArtistShelfGridPage(
-        shelf = targetShelf,
-        palette = palette,
-        onItemClick = onSectionItemClick,
-        onItemLongPress = onSectionItemLongPress,
-        contentPadding = contentPadding,
-    )
-}
-}
-}
+    }
 }
 
 /**
@@ -1336,38 +1405,45 @@ private val heroScrollCacheByBrowseId = mutableMapOf<String, HeroScrollCacheEntr
  * parked partway down the page.
  */
 @Composable
-private fun rememberHeroScrollPx(listState: LazyListState, browseId: String): State<Int> {
+private fun rememberHeroScrollPx(
+    listState: LazyListState,
+    browseId: String,
+    maxScrollPx: Int,
+    freezeScroll: Boolean,
+): State<Int> {
     val entry = remember(browseId) {
         heroScrollCacheByBrowseId.getOrPut(browseId) { HeroScrollCacheEntry() }
     }
-    return remember(listState, browseId) {
+    return remember(listState, browseId, maxScrollPx, freezeScroll) {
         derivedStateOf {
-            for (item in listState.layoutInfo.visibleItemsInfo) {
+            if (freezeScroll) {
+                entry.heldScrollPx = 0
+                return@derivedStateOf 0
+            }
+            val layoutInfo = listState.layoutInfo
+            for (item in layoutInfo.visibleItemsInfo) {
                 entry.itemHeightsPx[item.index] = item.size
             }
-            var total = 0
-            var known = true
-            for (i in 0 until listState.firstVisibleItemIndex) {
-                val height = entry.itemHeightsPx[i]
-                if (height == null) {
-                    known = false
-                    break
+
+            // While the header row is on screen, its layout offset is the true
+            // scroll distance — no need to sum earlier item heights yet.
+            val item0 = layoutInfo.visibleItemsInfo.find { it.index == 0 }
+            val raw = if (item0 != null) {
+                (-item0.offset).coerceAtLeast(0)
+            } else {
+                var total = listState.firstVisibleItemScrollOffset
+                for (i in 0 until listState.firstVisibleItemIndex) {
+                    val height = entry.itemHeightsPx[i]
+                    if (height == null) {
+                        return@derivedStateOf entry.heldScrollPx.coerceIn(0, maxScrollPx)
+                    }
+                    total += height
                 }
-                total += height
+                total
             }
-            if (!known) {
-                // Item 0 may still be in the viewport with a negative offset even
-                // after the list reports a higher first-visible index.
-                listState.layoutInfo.visibleItemsInfo.find { it.index == 0 }?.let { item0 ->
-                    entry.itemHeightsPx[0] = item0.size
-                    val fromItem0 = (-item0.offset).coerceAtLeast(0)
-                    if (fromItem0 > entry.heldScrollPx) entry.heldScrollPx = fromItem0
-                }
-                return@derivedStateOf entry.heldScrollPx
-            }
-            total += listState.firstVisibleItemScrollOffset
-            entry.heldScrollPx = total
-            total
+            val scroll = raw.coerceIn(0, maxScrollPx)
+            entry.heldScrollPx = scroll
+            scroll
         }
     }
 }
@@ -2019,6 +2095,7 @@ private fun SectionCard(
 
 @Composable
 private fun ArtistShelfGridPage(
+    artistBrowseId: String,
     shelf: HomeShelf,
     palette: ArtworkPalette,
     onItemClick: (ShelfItem) -> Unit,
@@ -2026,7 +2103,7 @@ private fun ArtistShelfGridPage(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    val gridState = rememberLazyGridState()
+    val gridState = rememberArtistShelfGridState(artistBrowseId, shelf)
     BoxWithConstraints(modifier.fillMaxSize().background(palette.background)) {
         val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
         LazyVerticalGrid(
