@@ -10,6 +10,12 @@ enum class QueueTier {
     AUTOPLAY,
 }
 
+/** One credited artist on a track, with a browse id when YouTube linked it. */
+data class ArtistCredit(
+    val name: String,
+    val browseId: String? = null,
+)
+
 /** A playable YouTube Music track. */
 data class Song(
     val videoId: String,
@@ -19,6 +25,12 @@ data class Song(
     val durationText: String? = null,
     /** Browse ids lifted from the row, used by the long-press actions. */
     val artistId: String? = null,
+    /**
+     * Every credited artist, when the row named more than one. Empty for
+     * older callers / round-trips that only carried [artistId] — the
+     * destinations sheet falls back to splitting [artist] in that case.
+     */
+    val artists: List<ArtistCredit> = emptyList(),
     val albumId: String? = null,
     /** Names the album page header, which [albumId] alone can't. */
     val albumName: String? = null,
@@ -107,6 +119,7 @@ data class Song(
         thumbnailUrl: String?,
         durationText: String? = null,
         artistId: String? = null,
+        artists: List<ArtistCredit> = emptyList(),
         albumId: String? = null,
         albumName: String? = null,
         isVideo: Boolean = false,
@@ -131,6 +144,7 @@ data class Song(
         thumbnailUrl = thumbnailUrl,
         durationText = durationText,
         artistId = artistId,
+        artists = artists,
         albumId = albumId,
         albumName = albumName,
         isVideo = isVideo,
@@ -438,6 +452,8 @@ data class DetailPage(
      * fetched with a session; see [SubscriptionState].
      */
     val subscription: SubscriptionState? = null,
+    /** Who can see this playlist — shown on the meta line, not with the owner. */
+    val playlistPrivacy: PlaylistPrivacy? = null,
 )
 
 /**
@@ -501,7 +517,60 @@ enum class LikeStatus { LIKE, DISLIKE, INDIFFERENT }
 enum class PlaylistPrivacy(val label: String, val apiValue: String) {
     PRIVATE("Private", "PRIVATE"),
     UNLISTED("Unlisted", "UNLISTED"),
-    PUBLIC("Public", "PUBLIC"),
+    PUBLIC("Public", "PUBLIC");
+
+    companion object {
+        /**
+         * Best-effort read of privacy from a library/header subtitle
+         * ("Private · 12 songs"). Null when the line doesn't name one —
+         * localized feeds often won't.
+         */
+        fun fromSubtitle(subtitle: String): PlaylistPrivacy? {
+            val lower = subtitle.lowercase()
+            return entries.firstOrNull { lower.contains(it.label.lowercase()) }
+        }
+
+        /**
+         * Subtitle with this visibility — keeps the song count (and anything
+         * after the old visibility word) when the library line had one.
+         */
+        fun isPrivacyLabel(text: String): Boolean =
+            entries.any { it.label.equals(text.trim(), ignoreCase = true) }
+
+        /** Removes visibility words from a header or library subtitle line. */
+        fun stripFromSubtitle(subtitle: String): String {
+            var line = subtitle
+            entries.forEach { option ->
+                line = line
+                    .replace(
+                        Regex("\\b${Regex.escape(option.label)}\\b\\s*·\\s*", RegexOption.IGNORE_CASE),
+                        "",
+                    )
+                    .replace(
+                        Regex("\\s*·\\s*\\b${Regex.escape(option.label)}\\b", RegexOption.IGNORE_CASE),
+                        "",
+                    )
+                    .replace(
+                        Regex("\\b${Regex.escape(option.label)}\\b\\s*•\\s*", RegexOption.IGNORE_CASE),
+                        "",
+                    )
+                    .replace(
+                        Regex("\\s*•\\s*\\b${Regex.escape(option.label)}\\b", RegexOption.IGNORE_CASE),
+                        "",
+                    )
+            }
+            return line.trim().trim('·', '•').trim()
+        }
+
+        fun subtitleWithPrivacy(subtitle: String, privacy: PlaylistPrivacy): String {
+            val remainder = stripFromSubtitle(subtitle)
+            return if (remainder.isBlank()) {
+                privacy.label
+            } else {
+                "${privacy.label} · $remainder"
+            }
+        }
+    }
 }
 
 /**
@@ -516,8 +585,12 @@ data class UserPlaylist(
     val title: String,
     val subtitle: String,
     val thumbnailUrl: String?,
+    /** Last known visibility — survives subtitle rewrites that only carry a tally. */
+    val privacy: PlaylistPrivacy? = null,
 ) {
     val browseId: String get() = "VL$playlistId"
+
+    fun resolvedPrivacy(): PlaylistPrivacy? = privacy ?: PlaylistPrivacy.fromSubtitle(subtitle)
 }
 
 /**

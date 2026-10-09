@@ -110,6 +110,7 @@ import com.music.velora.data.settings.TrackAnalysisState
 import com.music.velora.data.settings.AppSettings
 import com.music.velora.data.settings.AudioQuality
 import com.music.velora.data.model.Song
+import com.music.velora.ui.components.opensDestinationsSheet
 import com.music.velora.playback.AudioOutputStatus
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -1176,6 +1177,25 @@ internal fun Modifier.opensPage(browseId: String?, onOpen: (String) -> Unit): Mo
     } else {
         clip(RoundedCornerShape(6.dp)).clickable { onOpen(browseId) }
     }
+
+/**
+ * Artist credit under the title. Opens the destinations sheet for a multi-
+ * artist / album track (see [com.music.velora.ui.components.opensDestinationsSheet]),
+ * or the single artist page when that sheet would only have one row.
+ */
+internal fun Modifier.opensArtistCredit(
+    song: Song,
+    onOpenArtist: (String) -> Unit,
+): Modifier {
+    val canOpen = song.artistId != null || song.opensDestinationsSheet()
+    return if (!canOpen) {
+        this
+    } else {
+        clip(RoundedCornerShape(6.dp)).clickable {
+            onOpenArtist(song.artistId.orEmpty())
+        }
+    }
+}
 
 /** How fast the title/artist marquee crawls — unhurried, not a ticker. */
 private const val MARQUEE_DP_PER_SEC = 26f

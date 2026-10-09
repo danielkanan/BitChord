@@ -14,6 +14,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -59,11 +61,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -172,9 +177,10 @@ fun RootPageTitle(modifier: Modifier = Modifier) {
  */
 @Composable
 fun RootTabHeading(
-    text: String,
     listState: LazyListState,
     modifier: Modifier = Modifier,
+    text: String? = null,
+    @DrawableRes logoResId: Int? = null,
 ) {
     Box(
         modifier = modifier
@@ -195,20 +201,29 @@ fun RootTabHeading(
             },
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = 30.sp,
-                lineHeight = 30.sp,
-                platformStyle = PlatformTextStyle(includeFontPadding = false),
-            ),
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            // The glyph box sits a hair above the circle's middle. This lands
-            // the word on that middle.
-            modifier = Modifier.offset(y = 2.dp),
-        )
+        when {
+            logoResId != null -> Image(
+                painter = painterResource(logoResId),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground),
+                modifier = Modifier
+                    .height(40.dp)
+                    .offset(y = 1.dp),
+            )
+            text != null -> Text(
+                text = text,
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = 30.sp,
+                    lineHeight = 30.sp,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                ),
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.offset(y = 2.dp),
+            )
+        }
     }
 }
 

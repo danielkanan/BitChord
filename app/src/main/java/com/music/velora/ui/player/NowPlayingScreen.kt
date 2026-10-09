@@ -2699,7 +2699,7 @@ fun NowPlayingScreen(
                                     // starting together reads as clutter, so the artist
                                     // waits a beat before it joins in.
                                     startDelayMillis = if (titleOverflowing) MARQUEE_ARTIST_STAGGER_MS else 0L,
-                                    modifier = Modifier.opensPage(song.artistId, onOpenArtist),
+                                    modifier = Modifier.opensArtistCredit(song, onOpenArtist),
                                 )
                             }
                         }

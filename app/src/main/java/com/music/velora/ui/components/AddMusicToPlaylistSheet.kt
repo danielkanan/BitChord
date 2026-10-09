@@ -4,7 +4,9 @@
  */
 package com.music.velora.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,9 +21,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -86,6 +89,7 @@ private object AddMusicSuggestionsCache {
  * [onConfirm]. Rows already on the playlist stay off the suggestion list and
  * cannot be re-staged from search.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AddMusicToPlaylistSheet(
     playlist: UserPlaylist,
@@ -231,36 +235,16 @@ fun AddMusicToPlaylistSheet(
                 )
             }
 
-            !showingSearch -> BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val columnWidth = trackColumnWidth(maxWidth)
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(
-                        suggestions.chunked(SUGGESTION_TRACKS_PER_COLUMN),
-                        key = { column -> column.firstOrNull()?.videoId ?: "empty" },
-                    ) { column ->
-                        Column(Modifier.width(columnWidth)) {
-                            column.forEach { song ->
-                                val isSelected = song.videoId in selected
-                                AddMusicSongRow(
-                                    song = song,
-                                    selected = isSelected,
-                                    enabled = true,
-                                    onToggle = {
-                                        selected = if (isSelected) {
-                                            selected - song.videoId
-                                        } else {
-                                            selected + (song.videoId to song)
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            !showingSearch -> AddMusicSongColumnsRow(
+                songs = suggestions,
+                alreadyInPlaylist = alreadyInPlaylist,
+                selected = selected,
+                onSelectedChange = { selected = it },
+                dividerColor = chrome.edge.copy(alpha = 0.55f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SEARCH_LIST_MAX),
+            )
 
             searching && searchResults.isEmpty() -> Box(
                 modifier = Modifier
@@ -282,30 +266,74 @@ fun AddMusicToPlaylistSheet(
                 modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp),
             )
 
-            else -> LazyColumn(
+            else -> AddMusicSongColumnsRow(
+                songs = searchResults,
+                alreadyInPlaylist = alreadyInPlaylist,
+                selected = selected,
+                onSelectedChange = { selected = it },
+                dividerColor = chrome.edge.copy(alpha = 0.55f),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(SEARCH_LIST_MAX),
-            ) {
-                items(searchResults, key = { it.videoId }) { song ->
-                    val inPlaylist = song.videoId in alreadyInPlaylist
-                    val isSelected = song.videoId in selected
-                    AddMusicSongRow(
-                        song = song,
-                        selected = isSelected,
-                        enabled = !inPlaylist,
-                        onToggle = {
-                            selected = if (isSelected) {
-                                selected - song.videoId
-                            } else {
-                                selected + (song.videoId to song)
-                            }
-                        },
-                    )
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AddMusicSongColumnsRow(
+    songs: List<Song>,
+    alreadyInPlaylist: Set<String>,
+    selected: Map<String, Song>,
+    onSelectedChange: (Map<String, Song>) -> Unit,
+    dividerColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier) {
+        val columnWidth = trackColumnWidth(maxWidth)
+        val rowState = rememberLazyListState()
+        val snapFling = rememberSnapFlingBehavior(lazyListState = rowState)
+        LazyRow(
+            state = rowState,
+            flingBehavior = snapFling,
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(
+                songs.chunked(SUGGESTION_TRACKS_PER_COLUMN),
+                key = { column -> column.firstOrNull()?.videoId ?: "empty" },
+            ) { column ->
+                Column(Modifier.width(columnWidth)) {
+                    column.forEachIndexed { index, song ->
+                        val inPlaylist = song.videoId in alreadyInPlaylist
+                        val isSelected = song.videoId in selected
+                        AddMusicSongRow(
+                            song = song,
+                            selected = isSelected,
+                            enabled = !inPlaylist,
+                            onToggle = {
+                                onSelectedChange(
+                                    if (isSelected) {
+                                        selected - song.videoId
+                                    } else {
+                                        selected + (song.videoId to song)
+                                    },
+                                )
+                            },
+                        )
+                        if (index < column.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = RECENT_COLUMN_DIVIDER_INSET),
+                                thickness = 0.5.dp,
+                                color = dividerColor,
+                            )
+                        }
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
     }
 }
 

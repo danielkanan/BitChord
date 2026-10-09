@@ -929,6 +929,13 @@ object YtMusicRepository {
     suspend fun renamePlaylist(playlistId: String, title: String): Result<Unit> =
         call("playlist:rename") { Innertube.renamePlaylist(playlistId, title) }
 
+    suspend fun editPlaylist(
+        playlistId: String,
+        title: String? = null,
+        privacy: PlaylistPrivacy? = null,
+    ): Result<Unit> =
+        call("playlist:edit") { Innertube.editPlaylistDetails(playlistId, title, privacy) }
+
     suspend fun deletePlaylist(playlistId: String): Result<Unit> =
         call("playlist:delete") { Innertube.deletePlaylist(playlistId) }
 

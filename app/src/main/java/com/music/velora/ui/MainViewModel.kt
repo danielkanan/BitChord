@@ -801,7 +801,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val identity = listenerKey()
         _playlistsLoading.value = true
         viewModelScope.launch {
-            YtMusicRepository.userPlaylists().onSuccess { if (identity == listenerKey()) _playlists.value = it }
+            YtMusicRepository.userPlaylists().onSuccess { fetched ->
+                if (identity != listenerKey()) return@onSuccess
+                val prior = _playlists.value.associateBy { it.playlistId }
+                _playlists.value = fetched.map { fresh ->
+                    val knownPrivacy = prior[fresh.playlistId]?.privacy
+                    if (knownPrivacy == null) {
+                        fresh.copy(privacy = PlaylistPrivacy.fromSubtitle(fresh.subtitle))
+                    } else {
+                        fresh.copy(
+                            privacy = knownPrivacy,
+                            subtitle = PlaylistPrivacy.subtitleWithPrivacy(fresh.subtitle, knownPrivacy),
+                        )
+                    }
+                }
+            }
             if (identity == listenerKey()) _playlistsLoading.value = false
         }
     }
@@ -859,6 +873,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         _detailStack.value = _detailStack.value.map {
             if (it.browseId == playlist.browseId) it.copy(title = title) else it
+        }
+    }
+
+    /** Same surfaces as [setPlaylistTitle]; edit reads [UserPlaylist.privacy]. */
+    private fun setPlaylistPrivacy(playlist: UserPlaylist, privacy: PlaylistPrivacy) {
+        val subtitle = PlaylistPrivacy.subtitleWithPrivacy(playlist.subtitle, privacy)
+        _playlists.value = _playlists.value.map {
+            if (it.playlistId == playlist.playlistId) {
+                it.copy(privacy = privacy, subtitle = subtitle)
+            } else {
+                it
+            }
+        }
+        editPlaylistShelf { items ->
+            items.map { if (it.browseId == playlist.browseId) it.copy(subtitle = subtitle) else it }
+        }
+        _detailStack.value = _detailStack.value.map { page ->
+            if (page.browseId != playlist.browseId || page.type != BrowseType.PLAYLIST) page
+            else page.copy(
+                playlistPrivacy = privacy,
+                subtitle = PlaylistPrivacy.stripFromSubtitle(page.subtitle),
+            )
         }
     }
 
@@ -1011,6 +1047,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         // than a guess at what the feed will call it.
                         subtitle = if (song != null) "1 song" else "",
                         thumbnailUrl = song?.thumbnailUrl,
+                        privacy = privacy,
                     )
                     // Drawn from what was just sent rather than waited for: the
                     // library feed does not have this playlist yet, and the
@@ -1074,6 +1111,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             title = name,
                             subtitle = "${videoIds.size} songs",
                             thumbnailUrl = null,
+                            privacy = privacy,
                         )
                         _playlists.value = listOf(created) +
                             _playlists.value.filterNot { it.playlistId == created.playlistId }
@@ -1240,10 +1278,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val countLabel = if (songs.isEmpty()) "" else "${songs.size} songs"
         _playlists.value = _playlists.value.map { playlist ->
             if (playlist.browseId != browseId) playlist
-            else playlist.copy(
-                subtitle = countLabel,
-                thumbnailUrl = thumb ?: playlist.thumbnailUrl.takeIf { songs.isNotEmpty() },
-            )
+            else {
+                val privacy = playlist.resolvedPrivacy()
+                val subtitle = when {
+                    countLabel.isBlank() -> playlist.subtitle
+                    privacy != null -> PlaylistPrivacy.subtitleWithPrivacy(countLabel, privacy)
+                    else -> countLabel
+                }
+                playlist.copy(
+                    subtitle = subtitle,
+                    thumbnailUrl = thumb ?: playlist.thumbnailUrl.takeIf { songs.isNotEmpty() },
+                )
+            }
         }
         editPlaylistShelf { items ->
             items.map { item ->
@@ -1308,19 +1354,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Renames a playlist, and says so everywhere it is named — see
-     * [setPlaylistTitle]. Renaming is nearly always done from the playlist's
-     * own page or its card, so there is always something on screen still
-     * showing the old name.
+     * Edits a playlist's title and/or privacy, and says so everywhere the
+     * title is shown — see [setPlaylistTitle]. Done from the playlist's own
+     * page or its card, so there is always something on screen still showing
+     * the old name when the title changes.
      */
-    fun renamePlaylist(playlist: UserPlaylist, title: String) {
+    fun editPlaylist(
+        playlist: UserPlaylist,
+        title: String,
+        privacy: PlaylistPrivacy?,
+    ) {
         if (!requireSignIn()) return
         val name = title.trim()
-        if (name.isBlank() || name == playlist.title) return
+        if (name.isBlank()) return
+        val newTitle = name.takeIf { it != playlist.title }
+        if (newTitle == null && privacy == null) return
         viewModelScope.launch {
-            YtMusicRepository.renamePlaylist(playlist.playlistId, name).fold(
+            YtMusicRepository.editPlaylist(
+                playlistId = playlist.playlistId,
+                title = newTitle,
+                privacy = privacy,
+            ).fold(
                 onSuccess = {
-                    setPlaylistTitle(playlist, name)
+                    newTitle?.let { setPlaylistTitle(playlist, it) }
+                    privacy?.let { setPlaylistPrivacy(playlist, it) }
                     libraryStale = true
                 },
                 onFailure = {},
@@ -2494,13 +2551,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val resolved = browseTypeOf(browseId, type)
+        val openingPrivacy = if (resolved == BrowseType.PLAYLIST) {
+            PlaylistPrivacy.fromSubtitle(subtitle)
+        } else {
+            null
+        }
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,
-            subtitle = subtitle,
+            subtitle = if (resolved == BrowseType.PLAYLIST) {
+                PlaylistPrivacy.stripFromSubtitle(subtitle)
+            } else {
+                subtitle
+            },
             thumbnailUrl = thumbnailUrl,
             songs = UiState.Loading,
             type = resolved,
+            playlistPrivacy = openingPrivacy,
         )
         viewModelScope.launch {
             var sections = emptyList<HomeShelf>()
@@ -2531,6 +2598,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var monthlyListenerCount: String? = null
             /** Whether this artist is subscribed to — see [DetailPage.subscription]. */
             var subscription: SubscriptionState? = null
+            var playlistPrivacy: PlaylistPrivacy? = null
             val localPlaylist = LocalPlaylistStore.getPlaylist(browseId)
             val remote = remoteLibrary(browseId)
             val state = when {
@@ -2599,11 +2667,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             // be swapped for the header's wording underneath them.
                             page.header?.let { header ->
                                 if (title.isBlank()) name = header.title
-                                // Album cards often only carry the artist, while
-                                // the page header also carries the release year.
-                                // Prefer that richer line so the year appears
-                                // directly below the artist on the album page.
-                                if (resolved == BrowseType.ALBUM && header.subtitle.isNotBlank()) {
+                                if (resolved == BrowseType.PLAYLIST && header.subtitle.isNotBlank()) {
+                                    playlistPrivacy = PlaylistPrivacy.fromSubtitle(header.subtitle)
+                                    credit = PlaylistPrivacy.stripFromSubtitle(header.subtitle)
+                                } else if (resolved == BrowseType.ALBUM && header.subtitle.isNotBlank()) {
                                     credit = header.subtitle
                                 } else if (subtitle.isBlank()) {
                                     credit = header.subtitle
@@ -2647,6 +2714,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         subscriberCountText = subscriberCountText,
                         monthlyListenerCount = monthlyListenerCount,
                         subscription = subscription,
+                        playlistPrivacy = playlistPrivacy ?: it.playlistPrivacy,
                     )
                 } else {
                     it

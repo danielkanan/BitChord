@@ -49,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -187,6 +188,12 @@ fun SongActionsSheet(
      * as before — present when the id is there, absent when it never was.
      */
     resolvingLinks: Boolean = false,
+    /**
+     * When false, only the rows are drawn — the host supplies the shell
+     * ([com.music.velora.ui.player.PlayerDrawer] over the player's haze).
+     * Default true keeps the frosted [FrostedSheet] used over browse pages.
+     */
+    asSheet: Boolean = true,
 ) {
     var pickingSleepTimer by remember { mutableStateOf(false) }
     // Prefer the page sleeve when the host has one (artist / album / playlist);
@@ -202,10 +209,10 @@ fun SongActionsSheet(
     // rate, save, queue into a playlist, fetch again, or share a link for.
     val isOffline = song.localUri != null
 
-    FrostedSheet(hazeState = hazeState, palette = palette, modifier = modifier) {
+    val body: @Composable () -> Unit = body@{
         if (pickingSleepTimer) {
             SleepTimerPicker(palette = palette, onBack = { pickingSleepTimer = false })
-            return@FrostedSheet
+            return@body
         }
 
         SheetTrackHeader(song, subtitleColor = palette.onBackgroundVariant)
@@ -368,6 +375,32 @@ fun SongActionsSheet(
             ActionRow(Icons.Rounded.BugReport, stringResource(R.string.copy_log), accent = palette.accent, onClick = it)
         }
         Spacer(Modifier.height(12.dp))
+    }
+
+    if (asSheet) {
+        FrostedSheet(hazeState = hazeState, palette = palette, modifier = modifier) {
+            body()
+        }
+    } else {
+        // PlayerDrawer already frosts the Now Playing haze; only remap chrome
+        // so rows stay legible (same glyph colours as FrostedSheet).
+        val chrome = palette.toFrostChrome()
+        CompositionLocalProvider(LocalFrostChrome provides chrome) {
+            MaterialTheme(
+                colorScheme = MaterialTheme.colorScheme.copy(
+                    background = chrome.tint,
+                    surface = chrome.tint,
+                    onBackground = chrome.content,
+                    onSurface = chrome.content,
+                    onSurfaceVariant = chrome.contentVariant,
+                    primary = chrome.accent,
+                ),
+            ) {
+                Column(modifier.fillMaxWidth()) {
+                    body()
+                }
+            }
+        }
     }
 }
 

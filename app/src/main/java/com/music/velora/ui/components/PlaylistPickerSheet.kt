@@ -57,7 +57,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -445,27 +447,56 @@ private fun NewPlaylistForm(
 }
 
 /**
- * The rename panel of [BrowseActionsSheet], which swaps itself out for this
+ * The edit panel of [BrowseActionsSheet], which swaps itself out for this
  * rather than opening a dialog over itself — same reason the create form lives
- * inside [PlaylistPickerSheet].
+ * inside [PlaylistPickerSheet]. Name and visibility, matching [NewPlaylistForm].
  */
 @Composable
-internal fun RenamePlaylistForm(
+internal fun EditPlaylistForm(
     playlist: UserPlaylist,
     onBack: () -> Unit,
-    onRename: (String) -> Unit,
+    onSave: (title: String, privacy: PlaylistPrivacy?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var name by remember { mutableStateOf(playlist.title) }
+    val initialPrivacy = remember(playlist.playlistId, playlist.privacy, playlist.subtitle) {
+        playlist.resolvedPrivacy()
+    }
+    // Cursor at the end so focusing the field is ready to append / backspace
+    // the last characters, not the first.
+    var name by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = playlist.title,
+                selection = TextRange(playlist.title.length),
+            ),
+        )
+    }
+    var privacy by remember(playlist.playlistId, playlist.privacy, playlist.subtitle) {
+        mutableStateOf(initialPrivacy ?: PlaylistPrivacy.PRIVATE)
+    }
+    // When the subtitle didn't name a privacy, don't invent a change just
+    // because the form defaulted the pill to Private — only send it after
+    // the user actually picks one.
+    var privacyTouched by remember(playlist.playlistId, playlist.privacy, playlist.subtitle) {
+        mutableStateOf(false)
+    }
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
+    val titleChanged = name.text.isNotBlank() && name.text.trim() != playlist.title
+    val privacyChanged = if (initialPrivacy != null) {
+        privacy != initialPrivacy
+    } else {
+        privacyTouched
+    }
+    val canSave = name.text.isNotBlank() && (titleChanged || privacyChanged)
+
     val submit: () -> Unit = {
-        if (name.isNotBlank()) {
+        if (canSave) {
             focusManager.clearFocus()
-            onRename(name)
+            onSave(name.text.trim(), privacy.takeIf { privacyChanged })
         }
     }
 
@@ -491,7 +522,7 @@ internal fun RenamePlaylistForm(
                 )
             }
             Text(
-                text = stringResource(R.string.rename_playlist),
+                text = stringResource(R.string.edit_playlist),
                 style = MaterialTheme.typography.titleLarge,
                 color = chrome.content,
                 modifier = Modifier.weight(1f),
@@ -522,14 +553,37 @@ internal fun RenamePlaylistForm(
                     .focusRequester(focusRequester),
             )
         }
+
+        SheetHeading(stringResource(R.string.who_can_see_it))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PlaylistPrivacy.entries.forEach { option ->
+                PrivacyPill(
+                    icon = option.icon,
+                    label = option.label,
+                    selected = option == privacy,
+                    onClick = {
+                        privacy = option
+                        privacyTouched = true
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
         Button(
             onClick = submit,
-            enabled = name.isNotBlank() && name != playlist.title,
+            enabled = canSave,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 22.dp),
         ) {
-            Text(stringResource(R.string.save_name))
+            Text(stringResource(R.string.save_playlist))
         }
         Spacer(Modifier.height(28.dp))
     }

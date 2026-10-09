@@ -1070,10 +1070,31 @@ object Innertube {
     }
 
     suspend fun renamePlaylist(playlistId: String, title: String) {
+        editPlaylistDetails(playlistId, title = title)
+    }
+
+    /**
+     * Updates a playlist's name and/or privacy in one request. Empty of both
+     * is a no-op — callers decide which fields actually changed.
+     */
+    suspend fun editPlaylistDetails(
+        playlistId: String,
+        title: String? = null,
+        privacy: PlaylistPrivacy? = null,
+    ) {
+        if (title == null && privacy == null) return
         editPlaylist(playlistId) {
-            addJsonObject {
-                put("action", "ACTION_SET_PLAYLIST_NAME")
-                put("playlistName", title)
+            title?.let { name ->
+                addJsonObject {
+                    put("action", "ACTION_SET_PLAYLIST_NAME")
+                    put("playlistName", name)
+                }
+            }
+            privacy?.let { status ->
+                addJsonObject {
+                    put("action", "ACTION_SET_PLAYLIST_PRIVACY")
+                    put("playlistPrivacy", status.apiValue)
+                }
             }
         }
     }

@@ -112,6 +112,9 @@ val PAGE_GUTTER = 18.dp
 /** Where a divider under a track row starts: clear of the 52dp of artwork. */
 val ROW_DIVIDER_INSET = PAGE_GUTTER + 68.dp
 
+/** Dividers inside a home Recents column — artwork width plus its title gap. */
+val RECENT_COLUMN_DIVIDER_INSET = 48.dp + 12.dp
+
 /** Width of the track-index column on an album list. */
 val TRACK_NUMBER_WIDTH = 36.dp
 

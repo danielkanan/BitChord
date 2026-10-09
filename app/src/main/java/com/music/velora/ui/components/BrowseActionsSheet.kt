@@ -39,6 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.music.velora.R
 import com.music.velora.data.model.BrowseType
+import com.music.velora.data.model.PlaylistPrivacy
 import com.music.velora.data.model.ROW_ART_PX
 import com.music.velora.data.model.Song
 import com.music.velora.data.model.UserPlaylist
@@ -161,11 +162,11 @@ fun BrowseActionsSheet(
      */
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
-    onRename: ((String) -> Unit)? = null,
+    onEditPlaylist: ((title: String, privacy: PlaylistPrivacy?) -> Unit)? = null,
     /**
      * Opens the reorder sheet for one of the account's own playlists — set
-     * under the same rule as [onRename], since YouTube refuses to rearrange a
-     * playlist the account only saved.
+     * under the same rule as [onEditPlaylist], since YouTube refuses to
+     * rearrange a playlist the account only saved.
      */
     onReorder: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
@@ -178,19 +179,19 @@ fun BrowseActionsSheet(
      */
     onDeleteDownload: (() -> Unit)? = null,
 ) {
-    var renaming by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
     var confirmingDeleteDownload by remember { mutableStateOf(false) }
     val targetPalette = rememberArtworkPalette(target.thumbnailUrl, artPx = ROW_ART_PX)
     val palette = pagePalette ?: targetPalette
 
     val playlist = target.playlist
-    if (renaming && playlist != null && onRename != null) {
+    if (editing && playlist != null && onEditPlaylist != null) {
         FrostedSheet(hazeState = hazeState, palette = palette, modifier = modifier) {
-            RenamePlaylistForm(
+            EditPlaylistForm(
                 playlist = playlist,
-                onBack = { renaming = false },
-                onRename = onRename,
+                onBack = { editing = false },
+                onSave = onEditPlaylist,
             )
         }
         return
@@ -294,12 +295,12 @@ fun BrowseActionsSheet(
                 onClick = it,
             )
         }
-        if (onRename != null) {
+        if (onEditPlaylist != null) {
             ActionRow(
                 Icons.Rounded.Edit,
-                stringResource(R.string.rename),
+                stringResource(R.string.edit_playlist),
                 accent = palette.accent,
-            ) { renaming = true }
+            ) { editing = true }
         }
         onReorder?.let {
             ActionRow(

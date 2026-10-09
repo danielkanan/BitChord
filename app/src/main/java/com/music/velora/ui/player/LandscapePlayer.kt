@@ -415,7 +415,7 @@ internal fun LandscapeCredits(
                     // A title that's also scrolling gets to go first — starting
                     // together reads as clutter, so the artist waits a beat.
                     startDelayMillis = if (titleOverflowing) MARQUEE_ARTIST_STAGGER_MS else 0L,
-                    modifier = Modifier.opensPage(song.artistId, onOpenArtist),
+                    modifier = Modifier.opensArtistCredit(song, onOpenArtist),
                 )
             }
         }

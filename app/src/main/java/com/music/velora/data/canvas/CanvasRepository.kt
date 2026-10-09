@@ -89,7 +89,7 @@ object CanvasRepository {
         val key = cacheKey("song|${song.videoId}", spotifyFirst)
 
         return resolve(key, album != null) {
-            if (spotifyFirst) {
+            val fromCatalogue = if (spotifyFirst) {
                 firstHit(
                     { SpotifyCanvas.search(title, artist, album) },
                     { AppleMusicCanvas.search(title, artist, album) },
@@ -104,6 +104,7 @@ object CanvasRepository {
                     { SpotifyCanvas.search(title, artist, album) },
                 ) { it.matches(title, artist, album) }
             }
+            fromCatalogue ?: artistHeaderCanvas(artist)
         }
     }
 
@@ -120,6 +121,7 @@ object CanvasRepository {
             spotifyFirst = AppSettings.prioritizeSpotifyCanvas.value,
         )
         return synchronized(cache) { cache[key]?.artwork }
+            ?: cachedArtistHeaderCanvas(song.artist.cleaned())
     }
 
     /**
@@ -214,6 +216,25 @@ object CanvasRepository {
      * nothing and matching against it rejects everything, so it comes off
      * before either. Same treatment as the lyrics lookup gives it.
      */
+    /**
+     * Apple Music's artist-page loop when no per-track motion art exists — the
+     * same clip the artist header uses on a detail page.
+     */
+    private suspend fun artistHeaderCanvas(artistCredit: String): CanvasArtwork? {
+        val primary = splitArtists(artistCredit).firstOrNull()?.takeIf { it.isNotBlank() }
+            ?: return null
+        val video = AppleArtistArtRepository.artFor(primary)?.videoUrl ?: return null
+        Log.d(TAG, "artist header video for '$primary'")
+        return CanvasArtwork(url = video, artist = primary)
+    }
+
+    private fun cachedArtistHeaderCanvas(artistCredit: String): CanvasArtwork? {
+        val primary = splitArtists(artistCredit).firstOrNull()?.takeIf { it.isNotBlank() }
+            ?: return null
+        val video = AppleArtistArtRepository.cached(primary)?.videoUrl ?: return null
+        return CanvasArtwork(url = video, artist = primary)
+    }
+
     private fun String.cleaned(): String = replace(NOISE, " ")
         .substringBefore(" | ")
         .replace(Regex("\\s+"), " ")

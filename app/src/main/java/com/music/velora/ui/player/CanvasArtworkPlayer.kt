@@ -16,6 +16,7 @@ import android.graphics.SurfaceTexture
 import android.os.Build
 import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
@@ -37,6 +38,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
@@ -202,7 +204,6 @@ fun CanvasArtworkPlayer(
     val currentPresentationAlpha by rememberUpdatedState(presentationAlpha)
     val currentFootBlur by rememberUpdatedState(footBlur)
     val reportAspect by rememberUpdatedState(onAspectRatioChanged)
-
     val player = remember {
         ExoPlayer.Builder(context)
             // Shares the app's one OkHttp client, as everything that fetches
@@ -275,12 +276,22 @@ fun CanvasArtworkPlayer(
     // looked at, not of one left open behind a locked screen.
     //
     // Held inside this component rather than asked of each caller, so no call
-    // site can forget it. The player now runs continuously in the foreground
-    // regardless of playback state, so coming back from background always has
-    // a surface ready and `onRenderedFirstFrame()` fires naturally.
+    // site can forget it. [isPlaying] covers transport on the player and hero
+    // visibility on a detail page — the last frame stays up while decode is off.
     val foreground = rememberIsForeground()
-    LaunchedEffect(foreground, pausedForTransition) {
-        player.playWhenReady = foreground && !pausedForTransition
+    LaunchedEffect(foreground, pausedForTransition, isPlaying) {
+        player.playWhenReady = foreground && !pausedForTransition && isPlaying
+    }
+
+    LaunchedEffect(bounds.width, bounds.height) {
+        val w = bounds.width
+        val h = bounds.height
+        if (w <= 0 || h <= 0) return@LaunchedEffect
+        val maxEdge = maxOf(w, h)
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setMaxVideoSize(maxEdge, maxEdge)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            .build()
     }
 
     // Repaint onto a surface that has just been handed back. A TextureView's
@@ -366,6 +377,8 @@ fun CanvasArtworkPlayer(
         }
     }
 
+    val viewUpdateCache = remember(canvas) { CanvasViewUpdateCache() }
+
     AndroidView(
         factory = { viewContext ->
             val texture = TextureView(viewContext).apply {
@@ -373,6 +386,8 @@ fun CanvasArtworkPlayer(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
+                isClickable = false
+                isFocusable = false
                 // Blend rather than punch a hole: the still sleeve stays
                 // visible underneath for the length of the fade.
                 isOpaque = false
@@ -476,6 +491,8 @@ fun CanvasArtworkPlayer(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
+                isClickable = false
+                isFocusable = false
                 addView(texture)
             }
         },
@@ -493,11 +510,29 @@ fun CanvasArtworkPlayer(
                 // recomposing the player around it.
                 alpha * presentationAlpha()
             }
-            view.alpha = cover
             val foot = footBlur?.takeIf { Build.VERSION.SDK_INT >= Build.VERSION_CODES.S }
+            val footPath = when {
+                foot != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> 2
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> 1
+                else -> 0
+            }
+            if (viewUpdateCache.matches(
+                    cover = cover,
+                    foot = foot,
+                    footPath = footPath,
+                    bounds = bounds,
+                    clipAspect = clipAspect,
+                    contentMode = contentMode,
+                    alignPortraitTop = alignPortraitTop,
+                    bottomFade = bottomFade,
+                    bottomFadeEndPx = bottomFadeEndPx,
+                )
+            ) {
+                return@AndroidView
+            }
             view.layOutAtHeight(foot?.contentHeightPx)
             view.applyContentTransform(clipAspect, contentMode, alignPortraitTop)
-            if (foot != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (footPath == 2) {
                 // The clip stays fully drawn. The frame's own alpha is what
                 // fades it in, so the shader below reads the picture at full
                 // strength and the whole foot — blur included — arrives with it.
@@ -505,18 +540,24 @@ fun CanvasArtworkPlayer(
                 frame.alpha = cover
                 frame.fadeFraction = 0f
                 view.setRenderEffect(null)
-                frame.setFootBlur(foot, bounds.width, bounds.height)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                frame.setFootBlur(foot!!, bounds.width, bounds.height)
+            } else if (footPath == 1) {
+                view.alpha = cover
                 frame.alpha = 1f
                 frame.clearFootBlur(view)
                 view.setBottomFade(bottomFade, bounds, bottomFadeEndPx)
             } else {
+                view.alpha = cover
                 frame.alpha = 1f
                 frame.fadeFraction = bottomFade
                 frame.fadeEndPx = bottomFadeEndPx
             }
         },
-        modifier = modifier.onSizeChanged { bounds = it },
+        modifier = modifier
+            .onSizeChanged { bounds = it }
+            // Decorative on detail pages: the list scrolls above this view, but
+            // some OEMs still route vertical drags into the TextureView.
+            .pointerInteropFilter { false },
     )
 }
 
@@ -825,6 +866,10 @@ private class FootBlur {
  * FrameLayout and `dispatchDraw` takes the ordinary path.
  */
 private class FadingBottomFrame(context: Context) : FrameLayout(context) {
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = false
+
+    override fun onTouchEvent(event: MotionEvent): Boolean = false
+
     /** The clip. A colour plate may sit in front of it in the child list. */
     fun clipView(): TextureView {
         for (i in 0 until childCount) {
@@ -932,3 +977,46 @@ private fun mimeTypeOf(url: String): String? {
         else -> null
     }
 }
+/** Skips redundant [AndroidView] updates when scroll recomposes the parent. */
+private class CanvasViewUpdateCache {
+    private var cover = Float.NaN
+    private var foot: FootBlurSpec? = null
+    private var footPath = -1
+    private var bounds = IntSize.Zero
+    private var clipAspect = Float.NaN
+    private var contentMode: CanvasContentMode? = null
+    private var alignPortraitTop = false
+    private var bottomFade = Float.NaN
+    private var bottomFadeEndPx: Float? = null
+
+    fun matches(
+        cover: Float,
+        foot: FootBlurSpec?,
+        footPath: Int,
+        bounds: IntSize,
+        clipAspect: Float,
+        contentMode: CanvasContentMode,
+        alignPortraitTop: Boolean,
+        bottomFade: Float,
+        bottomFadeEndPx: Float?,
+    ): Boolean {
+        if (cover == this.cover && foot == this.foot && footPath == this.footPath &&
+            bounds == this.bounds && clipAspect == this.clipAspect &&
+            contentMode == this.contentMode && alignPortraitTop == this.alignPortraitTop &&
+            bottomFade == this.bottomFade && bottomFadeEndPx == this.bottomFadeEndPx
+        ) {
+            return true
+        }
+        this.cover = cover
+        this.foot = foot
+        this.footPath = footPath
+        this.bounds = bounds
+        this.clipAspect = clipAspect
+        this.contentMode = contentMode
+        this.alignPortraitTop = alignPortraitTop
+        this.bottomFade = bottomFade
+        this.bottomFadeEndPx = bottomFadeEndPx
+        return false
+    }
+}
+

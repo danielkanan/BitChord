@@ -184,6 +184,7 @@ fun Song.toSongBundle(): Bundle = bundleOf(
     "thumbnailUrl" to thumbnailUrl,
     "durationText" to durationText,
     "artistId" to artistId,
+    "artists" to encodeArtistCredits(artists),
     "albumId" to albumId,
     "albumName" to albumName,
     "isVideo" to isVideo,
@@ -208,6 +209,7 @@ fun songFromBundle(b: Bundle): Song = Song(
     thumbnailUrl = b.getString("thumbnailUrl"),
     durationText = b.getString("durationText"),
     artistId = b.getString("artistId"),
+    artists = decodeArtistCredits(b.getString("artists")),
     albumId = b.getString("albumId"),
     albumName = b.getString("albumName"),
     isVideo = b.getBoolean("isVideo"),
@@ -366,6 +368,7 @@ fun MediaItem.toSong() = Song(
     thumbnailUrl = mediaMetadata.artworkUri?.toString(),
     durationText = mediaMetadata.extras?.getString(EXTRA_DURATION),
     artistId = mediaMetadata.extras?.getString(EXTRA_ARTIST_ID),
+    artists = decodeArtistCredits(mediaMetadata.extras?.getString(EXTRA_ARTISTS)),
     albumId = mediaMetadata.extras?.getString(EXTRA_ALBUM_ID),
     albumName = mediaMetadata.albumTitle?.toString(),
     isExplicit = mediaMetadata.extras?.takeIf { it.containsKey(EXTRA_EXPLICIT) }
@@ -436,6 +439,22 @@ private const val EXTRA_PLAYBACK_SOURCE_ID = "velora.playbackSourceId"
  * service, has only what the item carries.
  */
 private const val EXTRA_ARTIST_ID = "velora.artistId"
+private const val EXTRA_ARTISTS = "velora.artists"
+
+private fun encodeArtistCredits(artists: List<com.music.velora.data.model.ArtistCredit>): String =
+    artists.joinToString("\u001e") { "${it.browseId.orEmpty()}\u001f${it.name}" }
+
+private fun decodeArtistCredits(raw: String?): List<com.music.velora.data.model.ArtistCredit> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return raw.split('\u001e').mapNotNull { part ->
+        val bits = part.split('\u001f', limit = 2)
+        val name = bits.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        com.music.velora.data.model.ArtistCredit(
+            name = name,
+            browseId = bits.getOrNull(0)?.takeIf { it.isNotBlank() },
+        )
+    }
+}
 private const val EXTRA_ALBUM_ID = "velora.albumId"
 
 /** @see Song.setVideoId */
@@ -637,7 +656,7 @@ fun Song.toMediaItem(): MediaItem {
             .apply {
                 if (queueTier != QueueTier.CONTEXT || queueEntryId != null || fromAutoplay ||
                     offlineUri != null || durationText != null ||
-                    artistId != null || albumId != null || setVideoId != null ||
+                    artistId != null || artists.isNotEmpty() || albumId != null || setVideoId != null ||
                     isExplicit != null || isVideo || isVideoOrigin || radioName != null ||
                     playbackSource != null || playbackSourceType != null || playbackSourceId != null
                 ) {
@@ -654,6 +673,7 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_LOCAL_PATH to localPath,
                             EXTRA_DURATION to durationText,
                             EXTRA_ARTIST_ID to artistId,
+                            EXTRA_ARTISTS to encodeArtistCredits(artists),
                             EXTRA_ALBUM_ID to albumId,
                             EXTRA_SET_VIDEO_ID to setVideoId,
                             EXTRA_EXPLICIT to isExplicit,

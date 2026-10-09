@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,6 +72,7 @@ import com.music.velora.data.settings.LibraryViewType
 import com.music.velora.ui.components.HERO_CARD_RATIO
 import com.music.velora.ui.components.MessageState
 import com.music.velora.ui.components.PAGE_GUTTER
+import com.music.velora.ui.components.RECENT_COLUMN_DIVIDER_INSET
 import com.music.velora.ui.components.RootPageTitle
 import com.music.velora.ui.components.PullToRefresh
 import com.music.velora.ui.components.SHELF_CARD_WIDTH
@@ -231,6 +234,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
 }
 
 /** The same four-rows-per-page treatment used by an artist's Top songs. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecentShelf(
     shelf: HomeShelf,
@@ -249,18 +253,29 @@ private fun RecentShelf(
         if (viewType == LibraryViewType.LIST) {
             BoxWithConstraints {
                 val columnWidth = trackColumnWidth(maxWidth)
+                val rowState = rememberLazyListState()
+                val snapFling = rememberSnapFlingBehavior(lazyListState = rowState)
                 LazyRow(
+                    state = rowState,
+                    flingBehavior = snapFling,
                     contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(shelf.items.chunked(RECENT_TRACKS_PER_COLUMN)) { column ->
                         Column(Modifier.width(columnWidth)) {
-                            column.forEach { item ->
+                            column.forEachIndexed { index, item ->
                                 RecentTrackRow(
                                     item = item,
                                     onClick = { onItemClick(item) },
                                     onLongPress = onItemLongPress?.let { { it(item) } },
                                 )
+                                if (index < column.lastIndex) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(start = RECENT_COLUMN_DIVIDER_INSET),
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
                             }
                         }
                     }
@@ -269,7 +284,11 @@ private fun RecentShelf(
         } else {
             BoxWithConstraints {
                 val cardWidth = heroCardWidth(maxWidth)
+                val rowState = rememberLazyListState()
+                val snapFling = rememberSnapFlingBehavior(lazyListState = rowState)
                 LazyRow(
+                    state = rowState,
+                    flingBehavior = snapFling,
                     contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {

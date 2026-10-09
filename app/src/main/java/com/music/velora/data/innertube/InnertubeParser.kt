@@ -3,6 +3,7 @@ package com.music.velora.data.innertube
 import com.music.velora.auth.normalizeDataSyncId
 import com.music.velora.data.model.Account
 import com.music.velora.data.model.AccountChannel
+import com.music.velora.data.model.ArtistCredit
 import com.music.velora.data.model.ArtistPage
 import com.music.velora.data.model.BrowseItem
 import com.music.velora.data.model.BrowseType
@@ -10,6 +11,7 @@ import com.music.velora.data.model.HomeShelf
 import com.music.velora.data.model.LibraryState
 import com.music.velora.data.model.LikeStatus
 import com.music.velora.data.model.MoodGenre
+import com.music.velora.data.model.PlaylistPrivacy
 import com.music.velora.data.model.MoodGenreSection
 import com.music.velora.data.model.SearchResult
 import com.music.velora.data.model.ShelfItem
@@ -319,7 +321,9 @@ object InnertubeParser {
         val header = response["header"]
         // "Top songs" rows are billed by the page they sit on: the subtitle
         // beside them counts plays where a search row names the artist.
-        val credit = Credits(artistName = artistName(header))
+        val credit = Credits(
+            artists = listOfNotNull(artistName(header)?.let { ArtistCredit(name = it) }),
+        )
 
         sections.forEach { section ->
             section.o("musicShelfRenderer")?.let { shelf ->
@@ -652,6 +656,16 @@ object InnertubeParser {
         val thumbnails = renderer.o("thumbnail").o("musicThumbnailRenderer")
             .o("thumbnail").a("thumbnails")
 
+        val displayArtist = creditedArtists
+            ?: credits.artistName?.takeIf { it.isNotBlank() }
+            ?: artist
+            ?: fallback.artistName
+            ?: "Unknown artist"
+        val artistCredits = artistCreditsFor(
+            displayArtist,
+            linked = (credits.artists + fallback.artists).distinctBy { it.browseId ?: it.name },
+            fallbackId = credits.artistId ?: fallback.artistId,
+        )
         return Song(
             videoId = videoId,
             title = title,
@@ -659,14 +673,11 @@ object InnertubeParser {
             // names link to artist pages. The "All" tab can list only
             // "Song • 4:30" instead, and an album's own rows can carry no
             // credit at all, so retain the linked and page-level fallbacks.
-            artist = creditedArtists
-                ?: credits.artistName?.takeIf { it.isNotBlank() }
-                ?: artist
-                ?: fallback.artistName
-                ?: "Unknown artist",
+            artist = displayArtist,
             thumbnailUrl = thumbnails.best(),
             durationText = duration,
-            artistId = credits.artistId ?: fallback.artistId,
+            artistId = artistCredits.firstOrNull()?.browseId ?: credits.artistId ?: fallback.artistId,
+            artists = artistCredits,
             albumId = credits.albumId ?: fallback.albumId,
             albumName = credits.albumName ?: fallback.albumName,
             // Only playlist rows carry one; on an album or a search hit this
@@ -706,16 +717,19 @@ object InnertubeParser {
         val thumbnails = renderer.o("thumbnail").o("musicThumbnailRenderer")
             .o("thumbnail").a("thumbnails")
 
+        val displayArtist = creditedArtists
+            ?: credits.artistName?.takeIf { it.isNotBlank() }
+            ?: artist
+            ?: "Unknown artist"
+        val artistCredits = artistCreditsFor(displayArtist, credits.artists, credits.artistId)
         return Song(
             videoId = videoId,
             title = title,
-            artist = creditedArtists
-                ?: credits.artistName?.takeIf { it.isNotBlank() }
-                ?: artist
-                ?: "Unknown artist",
+            artist = displayArtist,
             thumbnailUrl = thumbnails.best(),
             durationText = duration,
-            artistId = credits.artistId,
+            artistId = artistCredits.firstOrNull()?.browseId ?: credits.artistId,
+            artists = artistCredits,
             albumId = credits.albumId,
             albumName = credits.albumName,
             isVideo = rowType == "video" || thumbnails.isNotSquare(),
@@ -750,7 +764,7 @@ object InnertubeParser {
         // Deliberately no album: the card says who the song is by and nothing
         // about which release it came off, and a guess there would show up as a
         // wrong "go to album" in the row's own long-press menu.
-        return Credits(artistId = endpoint.s("browseId"), artistName = name)
+        return Credits(artists = listOf(ArtistCredit(name = name, browseId = endpoint.s("browseId"))))
     }
 
     /** Artist, album and playlist cards use the same promoted-search container as a song. */
@@ -815,28 +829,75 @@ object InnertubeParser {
 
     /** The artist / album pages a run list links out to, and their names. */
     private data class Credits(
-        val artistId: String? = null,
-        val artistName: String? = null,
+        val artists: List<ArtistCredit> = emptyList(),
         val albumId: String? = null,
         val albumName: String? = null,
-    )
+    ) {
+        val artistId: String? get() = artists.firstOrNull()?.browseId
+        val artistName: String?
+            get() = artists.map { it.name }.filter { it.isNotBlank() }
+                .joinToString(", ")
+                .ifBlank { null }
+    }
 
     private fun creditsOf(runs: List<JsonElement>): Credits {
-        var credits = Credits()
+        val artists = mutableListOf<ArtistCredit>()
+        var albumId: String? = null
+        var albumName: String? = null
         runs.forEach { run ->
             val browse = run.o("navigationEndpoint").o("browseEndpoint")
             val id = browse.s("browseId") ?: return@forEach
             val pageType = browse.o("browseEndpointContextSupportedConfigs")
                 .o("browseEndpointContextMusicConfig").s("pageType").orEmpty()
-            credits = when {
-                "ARTIST" in pageType && credits.artistId == null ->
-                    credits.copy(artistId = id, artistName = run.s("text"))
-                "ALBUM" in pageType && credits.albumId == null ->
-                    credits.copy(albumId = id, albumName = run.s("text"))
-                else -> credits
+            val name = run.s("text")?.trim().orEmpty()
+            when {
+                "ARTIST" in pageType && name.isNotBlank() -> {
+                    if (artists.none { it.browseId == id }) {
+                        artists += ArtistCredit(name = name, browseId = id)
+                    }
+                }
+                "ALBUM" in pageType && albumId == null -> {
+                    albumId = id
+                    albumName = name.takeIf { it.isNotBlank() }
+                }
             }
         }
-        return credits
+        return Credits(artists = artists, albumId = albumId, albumName = albumName)
+    }
+
+    /**
+     * Prefer linked browse ids, then fill any remaining credit names so the
+     * destinations sheet can still list (and later resolve) everyone named.
+     */
+    private fun artistCreditsFor(
+        displayCredit: String?,
+        linked: List<ArtistCredit>,
+        fallbackId: String?,
+    ): List<ArtistCredit> {
+        val names = displayCredit
+            ?.split(Regex("""(?:\s*,\s*|\s*&\s*|\s+×\s+|\s+x\s+|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)""", RegexOption.IGNORE_CASE))
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+        if (names.isEmpty()) {
+            return linked.ifEmpty {
+                listOfNotNull(
+                    fallbackId?.let { ArtistCredit(displayCredit?.takeIf { n -> n.isNotBlank() } ?: "Artist", it) },
+                )
+            }
+        }
+        return names.map { name ->
+            linked.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?: linked.firstOrNull { it.browseId != null && (name.contains(it.name, true) || it.name.contains(name, true)) }
+                ?: ArtistCredit(name = name, browseId = null)
+        }.let { merged ->
+            // If nothing matched a lone primary id, hang it on the first name.
+            if (merged.none { it.browseId != null } && fallbackId != null) {
+                listOf(merged.first().copy(browseId = fallbackId)) + merged.drop(1)
+            } else {
+                merged
+            }
+        }
     }
 
     /**
@@ -897,14 +958,19 @@ object InnertubeParser {
 
         val credits = creditsOf(lines.flatten())
         val creditedArtists = lines.firstNotNullOfOrNull(::artistNamesFromRuns)
-        if (creditedArtists != null) return credits.copy(artistName = creditedArtists)
+        if (creditedArtists != null) {
+            return credits.copy(
+                artists = artistCreditsFor(creditedArtists, credits.artists, credits.artistId),
+            )
+        }
         // An artist YouTube has no page for is named in the same line without
         // a link to follow, leaving the name as the only thing to go on.
         val name = parts.firstOrNull {
             it.isNotBlank() && it.lowercase(Locale.ROOT) !in TYPE_WORDS && !it.matches(TALLY) &&
                 !it.matches(YEAR) && !it.matches(DURATION)
         }
-        return credits.copy(artistName = name)
+        if (credits.artists.isNotEmpty() || name == null) return credits
+        return credits.copy(artists = listOf(ArtistCredit(name = name)))
     }
 
     /** How an album or playlist page bills itself, off its own header. */
@@ -1087,13 +1153,19 @@ object InnertubeParser {
             // Those same runs link out to the artist and album pages, which is
             // how a track started from the queue knows where it came from.
             val credits = creditsOf(bylineRuns)
+            val artistCredits = artistCreditsFor(
+                artist.takeIf { it.isNotBlank() },
+                credits.artists,
+                credits.artistId,
+            )
             out[videoId] = Song(
                 videoId = videoId,
                 title = title,
                 artist = artist,
                 thumbnailUrl = renderer.o("thumbnail").a("thumbnails").best(),
                 durationText = renderer.o("lengthText").runs().takeIf { it.isNotBlank() },
-                artistId = credits.artistId,
+                artistId = artistCredits.firstOrNull()?.browseId ?: credits.artistId,
+                artists = artistCredits,
                 albumId = credits.albumId,
                 albumName = credits.albumName,
                 // A catalogue track is credited "Artist • Album • Year"; the
@@ -1313,6 +1385,7 @@ object InnertubeParser {
                 title = item.title,
                 subtitle = item.subtitle,
                 thumbnailUrl = item.thumbnailUrl,
+                privacy = PlaylistPrivacy.fromSubtitle(item.subtitle),
             )
         }
 

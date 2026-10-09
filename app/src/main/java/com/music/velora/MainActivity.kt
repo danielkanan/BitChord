@@ -214,6 +214,8 @@ import com.music.velora.ui.components.DownloadManagerSheet
 import com.music.velora.ui.components.PlaylistPickerSheet
 import com.music.velora.ui.components.ReorderPlaylistSheet
 import com.music.velora.ui.components.SongActionsSheet
+import com.music.velora.ui.components.SongDestinationsSheet
+import com.music.velora.ui.components.opensDestinationsSheet
 import androidx.media3.session.MediaController
 import com.music.velora.playback.QualityUpgrade
 import com.music.velora.playback.rememberMediaController
@@ -255,6 +257,7 @@ import androidx.media3.common.Player
 import com.music.velora.data.YtMusicRepository
 import com.music.velora.ui.player.NowPlayingScreen
 import com.music.velora.ui.screens.DetailScreen
+import com.music.velora.ui.screens.rememberDetailPageListState
 import com.music.velora.ui.screens.ExploreScreen
 import com.music.velora.ui.screens.LocalMusicScreen
 import com.music.velora.ui.screens.HomeScreen
@@ -404,6 +407,9 @@ private fun VeloraApp(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val hazeState = remember { HazeState() }
+    /** Still hero only — frosted chrome on detail pages with header video. */
+    val detailChromeHaze = remember { HazeState() }
+    var detailHeaderVideoActive by remember { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     /**
      * Whether the player's sheet is up. The player is always a full-screen
@@ -518,6 +524,8 @@ private fun VeloraApp(
     var showSpotifyImportDialog by remember { mutableStateOf(false) }
     // Editable playlist the Add Music sheet is staging tracks for.
     var addMusicPlaylist by remember { mutableStateOf<UserPlaylist?>(null) }
+    // Artist/album destinations drawer from Now Playing or Open artist.
+    var songDestinations by remember { mutableStateOf<Song?>(null) }
     // Which album or playlist the collection menu is open on, or null when it
     // is shut. One slot for every surface that can open it — the shelves on
     // three tabs, the search rows, the artist page's carousels, the release
@@ -670,7 +678,36 @@ private fun VeloraApp(
     // selected. A pushed album/artist page (from the player, search, etc.)
     // should surface above it rather than being hidden behind it.
     LaunchedEffect(detail) { if (detail != null) showSettings = false }
-    LaunchedEffect(detail?.browseId) { detailActiveShelf = null }
+    // Artist "Show all" is UI state on the parent page. Drilling into a release
+    // must tuck that shelf away and bring it back when the child is popped —
+    // clearing on every browse-id change used to strand users on the main artist
+    // view after backing out of an album.
+    var detailActiveShelfRestore by remember { mutableStateOf<Pair<String, HomeShelf>?>(null) }
+    var detailStackSizeSeen by remember { mutableIntStateOf(0) }
+    LaunchedEffect(detailStack) {
+        val stack = detailStack
+        val current = stack.lastOrNull()
+        when {
+            current == null -> {
+                detailActiveShelf = null
+                detailActiveShelfRestore = null
+            }
+            stack.size > detailStackSizeSeen -> {
+                if (detailActiveShelf != null && stack.size >= 2) {
+                    val parent = stack[stack.size - 2]
+                    detailActiveShelfRestore = parent.browseId to detailActiveShelf!!
+                }
+                detailActiveShelf = null
+            }
+            stack.size < detailStackSizeSeen -> {
+                detailActiveShelfRestore?.takeIf { it.first == current.browseId }?.let { (_, shelf) ->
+                    detailActiveShelf = shelf
+                    detailActiveShelfRestore = null
+                }
+            }
+        }
+        detailStackSizeSeen = stack.size
+    }
     LaunchedEffect(showSettings) {
         if (!showSettings) {
             showAccountScrobbling = false
@@ -931,7 +968,7 @@ private fun VeloraApp(
         }
     }
 
-    val detailListState = remember(detail?.browseId) { LazyListState() }
+    val detailListState = rememberDetailPageListState(detail?.browseId.orEmpty())
     val detailTitleDrop = with(LocalDensity.current) { DETAIL_TITLE_DROP.toPx() }
     val detailScrolled by remember(detailListState, detailTitleDrop) {
         derivedStateOf {
@@ -958,8 +995,8 @@ private fun VeloraApp(
     val tabs = remember(homeLabel, exploreLabel, libraryLabel, searchLabel) {
         listOf(
             BottomTab(homeLabel, VeloraIcons.Home),
-            BottomTab(exploreLabel, VeloraIcons.Explore),
-            BottomTab(libraryLabel, VeloraIcons.Library),
+            BottomTab(exploreLabel, VeloraIcons.TabExplore),
+            BottomTab(libraryLabel, VeloraIcons.TabLibrary),
             BottomTab(searchLabel, VeloraIcons.Search),
         )
     }
@@ -1981,9 +2018,49 @@ private fun VeloraApp(
     // colour, reported by the page once it has read it. The bars follow that,
     // not the palette's clamped tint, or each would lay a band of a second
     // colour over the page.
-    var detailPageColor by remember(detail?.browseId) { mutableStateOf<Color?>(null) }
-    val detailChromePalette = remember(detailPalette, detailPageColor) {
-        detailPalette.onSolid(detailPageColor)
+    val detailPageColorByBrowseId = remember { mutableMapOf<String, Color>() }
+    var detailPageColor by remember(detail?.browseId) {
+        val id = detail?.browseId
+        val fromApple = if (detail?.type == BrowseType.ARTIST && detailApple != null) {
+            Color(detailApple.background)
+        } else {
+            null
+        }
+        mutableStateOf(id?.let { detailPageColorByBrowseId[it] } ?: fromApple)
+    }
+    val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
+    val detailExpectsHeaderVideo = detail?.type == BrowseType.ARTIST &&
+        !detailApple?.videoUrl.isNullOrBlank() && animatedCanvas
+    LaunchedEffect(detail?.browseId) {
+        detailHeaderVideoActive = false
+    }
+    LaunchedEffect(detail?.browseId, detailApple) {
+        val id = detail?.browseId ?: return@LaunchedEffect
+        when {
+            detail?.type == BrowseType.ARTIST && detailApple != null -> {
+                val color = Color(detailApple.background)
+                detailPageColor = color
+                detailPageColorByBrowseId[id] = color
+            }
+            detailPageColorByBrowseId.containsKey(id) -> {
+                detailPageColor = detailPageColorByBrowseId[id]
+            }
+        }
+    }
+    val chromeHaze = if (detailHeaderVideoActive) detailChromeHaze else hazeState
+    val resolvedDetailPageColor by remember {
+        derivedStateOf {
+            detailPageColor
+                ?: detail?.browseId?.let { detailPageColorByBrowseId[it] }
+                ?: if (detail?.type == BrowseType.ARTIST && detailApple != null) {
+                    Color(detailApple.background)
+                } else {
+                    null
+                }
+        }
+    }
+    val detailChromePalette = remember(detailPalette, resolvedDetailPageColor) {
+        detailPalette.onSolid(resolvedDetailPageColor)
     }
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     // Restarted per page, so a new page's bars start from its own colour
@@ -1991,7 +2068,7 @@ private fun VeloraApp(
     val detailChromeColor = key(detail?.browseId) {
         animateColorAsState(
             targetValue = detailChromePalette.background,
-            animationSpec = if (reduceAnimation) snap() else tween(DETAIL_SOLID_FADE_MS),
+            animationSpec = if (reduceAnimation || detailExpectsHeaderVideo) snap() else tween(DETAIL_SOLID_FADE_MS),
             label = "detailChrome",
         ).value
     }
@@ -2028,6 +2105,7 @@ private fun VeloraApp(
         val extra = links?.takeIf { it.videoId == current.videoId } ?: return@let current
         current.copy(
             artistId = current.artistId ?: extra.artistId,
+            artists = current.artists.ifEmpty { extra.artists },
             albumId = current.albumId ?: extra.albumId,
             albumName = current.albumName ?: extra.albumName,
         )
@@ -2193,16 +2271,20 @@ private fun VeloraApp(
                 )
             },
             onOpenArtist = { id ->
-                showNowPlaying = false
-                // No artwork: this track's cover isn't the artist's
-                // picture, and the page fills its own in once loaded.
-                viewModel.openDetail(
-                    id,
-                    song.artist,
-                    context.getString(R.string.artist),
-                    null,
-                    BrowseType.ARTIST,
-                )
+                if (song.opensDestinationsSheet()) {
+                    songDestinations = song
+                } else if (id.isNotBlank()) {
+                    showNowPlaying = false
+                    // No artwork: this track's cover isn't the artist's
+                    // picture, and the page fills its own in once loaded.
+                    viewModel.openDetail(
+                        id,
+                        song.artist,
+                        context.getString(R.string.artist),
+                        null,
+                        BrowseType.ARTIST,
+                    )
+                }
             },
             onOpenPlaybackSource = openSource@{
                 val sourceType = displayedSong.playbackSourceType ?: PlaybackSourceType.QUEUE
@@ -2697,13 +2779,20 @@ private fun VeloraApp(
                             page = page,
                             currentSong = player.song,
                             isPlaying = player.isPlaying,
-                            listState = detailListState,
+                            listState = rememberDetailPageListState(page.browseId),
                             activeShelf = detailActiveShelf,
                             onActiveShelfChange = { detailActiveShelf = it },
                             // A page still fading out under its replacement
                             // must not paint the bars its own colour.
                             onPageColorChange = { color ->
-                                if (page.browseId == detail?.browseId) detailPageColor = color
+                                if (page.browseId == detail?.browseId && color != null) {
+                                    detailPageColor = color
+                                    detailPageColorByBrowseId[page.browseId] = color
+                                }
+                            },
+                            chromeHazeState = detailChromeHaze,
+                            onHeaderVideoActive = { active ->
+                                if (page.browseId == detail?.browseId) detailHeaderVideoActive = active
                             },
                             onSongClick = { songs, index ->
                                 playFrom(
@@ -3046,21 +3135,21 @@ private fun VeloraApp(
                         },
                 )
 
-                val rootTabTitle = when {
-                    showSpotify || showDiscord || showHistory ||
-                        (libraryShowAll != null && detail == null) ||
-                        showAccountScrobbling || showSources || showListenTogether ||
-                        showEqualizer || showSettings || showReplay ||
-                        detail != null || selectedMoodGenre != null -> null
-                    selectedTab == TAB_HOME -> stringResource(R.string.listen_now)
-                    selectedTab == TAB_EXPLORE -> stringResource(R.string.explore)
-                    selectedTab == TAB_LIBRARY -> stringResource(R.string.library)
-                    else -> stringResource(R.string.search)
-                }
-                if (rootTabTitle != null) {
+                val showRootTabHeading = !showSpotify && !showDiscord && !showHistory &&
+                    !(libraryShowAll != null && detail == null) &&
+                    !showAccountScrobbling && !showSources && !showListenTogether &&
+                    !showEqualizer && !showSettings && !showReplay &&
+                    detail == null && selectedMoodGenre == null
+                if (showRootTabHeading) {
                     RootTabHeading(
-                        text = rootTabTitle,
                         listState = currentListState,
+                        logoResId = if (selectedTab == TAB_HOME) R.drawable.velora_wordmark else null,
+                        text = when (selectedTab) {
+                            TAB_HOME -> null
+                            TAB_EXPLORE -> stringResource(R.string.explore)
+                            TAB_LIBRARY -> stringResource(R.string.library)
+                            else -> stringResource(R.string.search)
+                        },
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = stableStatusBarTopPadding()),
@@ -3083,13 +3172,13 @@ private fun VeloraApp(
                         detail != null -> detail.title
                         selectedMoodGenre != null -> selectedMoodGenre?.title.orEmpty()
                         else -> when (selectedTab) {
-                            TAB_HOME -> stringResource(R.string.listen_now)
+                            TAB_HOME -> ""
                             else -> tabs[selectedTab].label
                         }
                     },
                     transparentBackdrop = true,
                     artworkPageChrome = isReplayVisible || isDetailVisible,
-                    backButtonHazeState = hazeState,
+                    backButtonHazeState = chromeHaze,
                     trailingTitle = if (detail != null && detailActiveShelf != null) detail.title else null,
                     // Pushed pages wait until their large in-page heading has
                     // scrolled away. Root tabs keep the title on the page.
@@ -3436,7 +3525,7 @@ private fun VeloraApp(
                         tabs = tabs,
                         selectedIndex = selectedTab,
                         onTabSelected = onTabSelected,
-                        hazeState = hazeState,
+                        hazeState = chromeHaze,
                         song = player.song,
                         isPlaying = player.isPlaying,
                         isLoading = playPauseBusy,
@@ -3737,7 +3826,12 @@ private fun VeloraApp(
                         )
                     },
                     onOpenArtist = { id ->
-                        openPage(id, song.artist, context.getString(R.string.artist), BrowseType.ARTIST)
+                        if (song.opensDestinationsSheet()) {
+                            songActions = null
+                            songDestinations = song
+                        } else if (id.isNotBlank()) {
+                            openPage(id, song.artist, context.getString(R.string.artist), BrowseType.ARTIST)
+                        }
                     },
                     // Only the player's copy of a track is ever missing these
                     // and backfilling — a row opened from a list already has
@@ -3838,6 +3932,44 @@ private fun VeloraApp(
                         }
                     } else {
                         null
+                    },
+                )
+            }
+        }
+
+        // ---- Go to Artist / Go to Album (multi-credit or album tracks) ----
+        songDestinations?.let { song ->
+            ModalBottomSheet(
+                onDismissRequest = { songDestinations = null },
+                containerColor = Color.Transparent,
+                dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+            ) {
+                SongDestinationsSheet(
+                    song = song,
+                    hazeState = hazeState,
+                    pagePalette = detail?.let { detailPalette },
+                    onOpenArtist = { id, name ->
+                        songDestinations = null
+                        showNowPlaying = false
+                        viewModel.openDetail(
+                            id,
+                            name,
+                            context.getString(R.string.artist),
+                            null,
+                            BrowseType.ARTIST,
+                        )
+                    },
+                    onOpenAlbum = { id, title ->
+                        songDestinations = null
+                        showNowPlaying = false
+                        viewModel.openDetail(
+                            id,
+                            title,
+                            song.artist,
+                            song.thumbnailUrl,
+                            BrowseType.ALBUM,
+                        )
                     },
                 )
             }
@@ -4099,10 +4231,10 @@ private fun VeloraApp(
                             browseActions = null
                         }
                     },
-                    onRename = playlist?.let { p ->
-                        { name: String ->
+                    onEditPlaylist = playlist?.let { p ->
+                        { title, privacy ->
                             browseActions = null
-                            viewModel.renamePlaylist(p, name)
+                            viewModel.editPlaylist(p, title, privacy)
                         }
                     },
                     onReorder = playlist?.let { p ->
@@ -4324,27 +4456,35 @@ private fun VeloraApp(
         }
 
         if (showAccountSelector) {
-            BackHandler { showAccountSelector = false }
-            AccountProfileSelector(
-                accounts = googleAccounts,
-                activeAccountId = activeAccountId,
-                activeProfileId = activeProfileId,
-                hazeState = hazeState,
-                onSelect = { selected, profile -> viewModel.selectProfile(selected.accountId, profile.profileId) },
-                onAddAccount = {
-                    showAccountSelector = false
-                    webSession = WebSessionMode.SIGN_IN
-                },
-                onRemoveAccount = { selected ->
-                    viewModel.removeAccount(selected.accountId)
-                    showAccountSelector = false
-                },
-                onOpenSettings = {
-                    showAccountSelector = false
-                    showSettings = true
-                },
-                onDismiss = { showAccountSelector = false },
-            )
+            ModalBottomSheet(
+                onDismissRequest = { showAccountSelector = false },
+                containerColor = Color.Transparent,
+                dragHandle = null,
+                contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+            ) {
+                AccountProfileSelector(
+                    accounts = googleAccounts,
+                    activeAccountId = activeAccountId,
+                    activeProfileId = activeProfileId,
+                    hazeState = hazeState,
+                    onSelect = { selected, profile ->
+                        viewModel.selectProfile(selected.accountId, profile.profileId)
+                        showAccountSelector = false
+                    },
+                    onAddAccount = {
+                        showAccountSelector = false
+                        webSession = WebSessionMode.SIGN_IN
+                    },
+                    onRemoveAccount = { selected ->
+                        viewModel.removeAccount(selected.accountId)
+                        showAccountSelector = false
+                    },
+                    onOpenSettings = {
+                        showAccountSelector = false
+                        showSettings = true
+                    },
+                )
+            }
         }
 
         if (showAppLanguage) {
@@ -4745,8 +4885,15 @@ private const val DETAIL_SOLID_FADE_MS = 220
  * by the time rows pass under the bar.
  */
 private fun LazyListState.topFloorAlpha(floorPx: Float): Float {
-    val header = layoutInfo.visibleItemsInfo.firstOrNull() ?: return 1f
-    if (header.index != 0 || floorPx <= 0f) return 1f
+    if (floorPx <= 0f) return 1f
+    val header = layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }
+    if (header == null) {
+        // Before the header item is placed, a full-strength scrim reads as a
+        // flat band of page colour over the hero — especially on artist pages
+        // whose clip is still fading in.
+        return if (firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0) 0f else 1f
+    }
+    if (header.size <= 0) return 0f
     val heroBottom = (header.offset + header.size).toFloat()
     return ((floorPx - heroBottom) / (floorPx / 2f)).coerceIn(0f, 1f)
 }

@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,20 +63,28 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.draw.clip
@@ -121,6 +130,7 @@ import com.music.velora.data.model.CARD_ART_PX
 import com.music.velora.data.model.HEADER_ART_PX
 import com.music.velora.data.model.ROW_ART_PX
 import com.music.velora.data.model.HomeShelf
+import com.music.velora.data.model.PlaylistPrivacy
 import com.music.velora.data.model.ShelfItem
 import com.music.velora.data.settings.SongSort
 import com.music.velora.data.model.Song
@@ -148,6 +158,7 @@ import com.music.velora.ui.components.thumbnailBorder
 import com.music.velora.ui.components.videoBlur
 import com.music.velora.ui.components.detailSkeleton
 import com.music.velora.ui.components.topBarContentPadding
+import com.music.velora.ui.components.RECENT_COLUMN_DIVIDER_INSET
 import com.music.velora.ui.components.trackColumnWidth
 import com.music.velora.ui.haptics.Haptic
 import com.music.velora.ui.haptics.rememberHaptics
@@ -157,6 +168,8 @@ import com.music.velora.ui.player.FootBlurSpec
 import com.music.velora.ui.theme.ArtworkPalette
 import com.music.velora.ui.theme.onSolid
 import com.music.velora.ui.theme.rememberArtworkPalette
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -246,6 +259,22 @@ private const val TOP_RELEASE_COVER_EDGE_ALPHA = 0.215f
  * eye finds that edge every time; a blur that runs on until it is the page has
  * no edge to find.
  */
+/**
+ * One [LazyListState] per detail [browseId]. [AnimatedContent] keeps the outgoing
+ * page composed while it fades; wiring every slot to the live top-of-stack state
+ * made the exit animation drive the page underneath and left that list stuck
+ * after a pop.
+ */
+private val detailPageListStates = mutableMapOf<String, LazyListState>()
+
+@Composable
+fun rememberDetailPageListState(browseId: String): LazyListState {
+    return remember(browseId) {
+        detailPageListStates.getOrPut(browseId) { LazyListState() }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DetailScreen(
     page: DetailPage,
@@ -269,6 +298,13 @@ fun DetailScreen(
      * artwork colour yet, when the page is on its palette's own background.
      */
     onPageColorChange: (Color?) -> Unit = {},
+    /**
+     * Haze source for frosted chrome while a header video plays — the still
+     * hero only, so the clip does not invalidate blur every frame.
+     */
+    chromeHazeState: HazeState? = null,
+    /** True while [PageBackground] is showing a looping header clip. */
+    onHeaderVideoActive: (Boolean) -> Unit = {},
     /**
      * Holding one of the album cards on an artist page — the same menu the
      * shelves on every other tab open, so a release can be queued from
@@ -367,6 +403,7 @@ fun DetailScreen(
         canvas = CanvasRepository.canvasForAlbum(page.title, credit) ?: canvas
     }
     val artistVideo = appleArt?.videoUrl
+    val expectsHeaderVideo = isArtist && canvasEnabled && !artistVideo.isNullOrBlank()
     LaunchedEffect(artistVideo, canvasEnabled) {
         if (isArtist) canvas = artistVideo?.takeIf { canvasEnabled }?.let { CanvasArtwork(url = it) }
     }
@@ -385,8 +422,9 @@ fun DetailScreen(
     // Capping against the window's own height is what keeps the ratio's
     // math honest once the width it's fed is no longer guaranteed to be
     // the narrow one it was written for.
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val artHeight = (maxWidth / if (isArtist) ARTIST_PHOTO_RATIO else SLEEVE_RATIO)
-        .coerceAtMost(maxHeight * 0.6f)
+        .coerceAtMost(minOf(maxHeight * 0.6f, screenHeight * 0.55f))
     val heroWidthPx = constraints.maxWidth
     val photoHeightPx = with(LocalDensity.current) { artHeight.roundToPx() }
     // Artist pages resolve [headerArtUrl] themselves — including "nothing
@@ -403,13 +441,48 @@ fun DetailScreen(
     // colour on its own until then.
     val pageSolid = foot?.solid ?: appleArt?.let { Color(it.background) }
     val palette = remember(artPalette, pageSolid) { artPalette.onSolid(pageSolid) }
-    SideEffect { onPageColorChange(pageSolid) }
+    SideEffect {
+        if (pageSolid != null) onPageColorChange(pageSolid)
+    }
 
     // What marks a row as already downloaded, tinted from the sleeve like the
     // rest of the page. Null on any page that is itself a reading of this
     // device — the Downloads folder, one downloaded playlist — where every row
     // qualifies and the badge would be decoration rather than information.
     val downloadedTint = palette.accent.takeUnless { page.browseId.startsWith("local:") }
+
+    // When the track list replaces the loading skeleton the column height can
+    // jump enough that a few Samsung builds keep a stale offset and refuse to
+    // scroll — park at the top once real content is on screen.
+    var artistSongsWereLoading by remember(page.browseId) {
+        mutableStateOf(isArtist && page.songs is UiState.Loading)
+    }
+    LaunchedEffect(page.songs) {
+        when (page.songs) {
+            is UiState.Loading -> artistSongsWereLoading = isArtist
+            else -> if (artistSongsWereLoading && isArtist) {
+                artistSongsWereLoading = false
+                listState.scrollToItem(0)
+            }
+        }
+    }
+
+    // Kept outside the shelf transition: [PageBackground] is torn down while
+    // "Show all" is open, and its scroll cache used to reset to zero on the way
+    // back — the hero then sat at the top while the list was still scrolled down.
+    val heroScrollPx = rememberHeroScrollPx(listState, page.browseId)
+    LaunchedEffect(page.browseId, activeShelf) {
+        if (!isArtist || activeShelf != null) return@LaunchedEffect
+        val index = listState.firstVisibleItemIndex
+        val offset = listState.firstVisibleItemScrollOffset
+        listState.scrollToItem(index, offset)
+    }
+    LaunchedEffect(page.browseId) {
+        if (isArtist) return@LaunchedEffect
+        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+            heroScrollCacheByBrowseId[page.browseId]?.heldScrollPx = 0
+        }
+    }
 
     AnimatedContent(
         targetState = activeShelf,
@@ -426,14 +499,21 @@ fun DetailScreen(
                     pageColor = palette.wash,
                     canvas = canvas,
                     artHeight = artHeight,
-                    listState = listState,
+                    heroScrollPx = heroScrollPx,
                     videoBlur = foot?.videoBlur(heroWidthPx, photoHeightPx),
-                    modifier = Modifier.matchParentSize(),
+                    chromeHazeState = chromeHazeState,
+                    expectsHeaderVideo = expectsHeaderVideo,
+                    onHeaderVideoActive = onHeaderVideoActive,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .zIndex(0f),
                 )
 
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(1f),
                     // Both artist photos and release artwork run edge-to-edge up under
                     // the glass bar — the image is the top of the page, not a card on it.
                     contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
@@ -549,13 +629,18 @@ fun DetailScreen(
                         )
                         BoxWithConstraints {
                             val columnWidth = trackColumnWidth(maxWidth)
+                            val rowState = rememberLazyListState()
+                            val snapFling = rememberSnapFlingBehavior(lazyListState = rowState)
                             LazyRow(
+                                state = rowState,
+                                flingBehavior = snapFling,
+                                modifier = Modifier.forwardVerticalScrollTo(listState),
                                 contentPadding = PaddingValues(horizontal = ARTIST_CONTENT_GUTTER),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(top.chunked(SONGS_PER_COLUMN)) { column ->
                                     Column(Modifier.width(columnWidth)) {
-                                        column.forEach { song ->
+                                        column.forEachIndexed { index, song ->
                                             CompactSongRow(
                                                 song = song,
                                                 palette = palette,
@@ -563,6 +648,15 @@ fun DetailScreen(
                                                 onLongPress = { onSongLongPress(song) },
                                                 downloadedTint = downloadedTint,
                                             )
+                                            if (index < column.lastIndex) {
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(
+                                                        start = RECENT_COLUMN_DIVIDER_INSET,
+                                                    ),
+                                                    thickness = 0.5.dp,
+                                                    color = palette.divider,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -643,24 +737,47 @@ fun DetailScreen(
                 item(key = "suggested-heading") {
                     SectionHeading(stringResource(R.string.suggested), palette)
                 }
-                itemsIndexed(
-                    suggested,
-                    key = { _, song -> "suggested-${song.videoId}" },
-                ) { index, song ->
-                    SuggestedSongRow(
-                        song = song,
-                        palette = palette,
-                        onClick = { onSongClick(suggested, index) },
-                        onLongPress = { onSongLongPress(song) },
-                        onAdd = { onAddSuggested(song) },
-                        downloadedTint = downloadedTint,
-                    )
-                    if (index < suggested.lastIndex) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
-                            thickness = 0.5.dp,
-                            color = palette.divider,
-                        )
+                item(key = "suggested-songs") {
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val columnWidth = trackColumnWidth(maxWidth)
+                        val rowState = rememberLazyListState()
+                        val snapFling = rememberSnapFlingBehavior(lazyListState = rowState)
+                        val columns = suggested.chunked(SONGS_PER_COLUMN)
+                        LazyRow(
+                            state = rowState,
+                            flingBehavior = snapFling,
+                            modifier = Modifier.forwardVerticalScrollTo(listState),
+                            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            itemsIndexed(
+                                columns,
+                                key = { _, column -> column.first().videoId },
+                            ) { columnIndex, column ->
+                                Column(Modifier.width(columnWidth)) {
+                                    column.forEachIndexed { index, song ->
+                                        val songIndex = columnIndex * SONGS_PER_COLUMN + index
+                                        CompactSuggestedSongRow(
+                                            song = song,
+                                            palette = palette,
+                                            onClick = { onSongClick(suggested, songIndex) },
+                                            onLongPress = { onSongLongPress(song) },
+                                            onAdd = { onAddSuggested(song) },
+                                            downloadedTint = downloadedTint,
+                                        )
+                                        if (index < column.lastIndex) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(
+                                                    start = RECENT_COLUMN_DIVIDER_INSET,
+                                                ),
+                                                thickness = 0.5.dp,
+                                                color = palette.divider,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -679,6 +796,11 @@ fun DetailScreen(
                         horizontalPadding = if (isArtist) ARTIST_CONTENT_GUTTER else PAGE_GUTTER,
                     )
                     LazyRow(
+                        modifier = if (isArtist) {
+                            Modifier.forwardVerticalScrollTo(listState)
+                        } else {
+                            Modifier
+                        },
                         contentPadding = PaddingValues(
                             horizontal = if (isArtist) ARTIST_CONTENT_GUTTER else PAGE_GUTTER,
                         ),
@@ -1039,31 +1161,56 @@ private fun PageBackground(
     pageColor: Color,
     canvas: CanvasArtwork?,
     artHeight: Dp,
-    listState: LazyListState,
+    heroScrollPx: State<Int>,
     videoBlur: FootBlurSpec?,
+    chromeHazeState: HazeState?,
+    expectsHeaderVideo: Boolean,
+    onHeaderVideoActive: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val snapPageColor = reduceAnimation || expectsHeaderVideo
     val fill by animateColorAsState(
         targetValue = pageColor,
-        animationSpec = if (reduceAnimation) snap() else tween(PAGE_SOLID_FADE_MS),
+        animationSpec = if (snapPageColor) snap() else tween(PAGE_SOLID_FADE_MS),
         label = "pageSolid",
     )
     // Faded in only when it had to be read first: a hero read before is there
     // on the page's first frame.
     val heroAlpha = remember { Animatable(if (foot != null) 1f else 0f) }
-    LaunchedEffect(foot != null) {
+    LaunchedEffect(foot != null, expectsHeaderVideo) {
         when {
             foot == null -> heroAlpha.snapTo(0f)
-            reduceAnimation -> heroAlpha.snapTo(1f)
+            reduceAnimation || expectsHeaderVideo -> heroAlpha.snapTo(1f)
             else -> heroAlpha.animateTo(1f, tween(HERO_FADE_MS))
         }
     }
     val clip = canvas?.takeIf {
         videoBlur != null && !reduceDynamicBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     }
-    val heroScrollPx = rememberHeroScrollPx(listState)
+    var clipCover by remember(clip?.url) { mutableFloatStateOf(0f) }
+    val clipHandoff = clip != null && clipCover >= HEADER_CLIP_HANDOFF_COVER
+    val hazeStill = foot != null && chromeHazeState != null && (expectsHeaderVideo || clip != null)
+    val headerVideoActive = clip != null && chromeHazeState != null
+    SideEffect {
+        onHeaderVideoActive(
+            (expectsHeaderVideo && foot != null) ||
+                (headerVideoActive && clipHandoff),
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose { onHeaderVideoActive(false) }
+    }
+    val density = LocalDensity.current
+    val heroBoxHeightPx = foot?.let {
+        with(density) { (artHeight * (1f + it.runFraction)).roundToPx() }
+    } ?: 0
+    val heroDecodeActive by remember(heroBoxHeightPx) {
+        derivedStateOf {
+            heroBoxHeightPx <= 0 || heroScrollPx.value < heroBoxHeightPx
+        }
+    }
 
     Box(modifier.background(fill).clipToBounds()) {
         if (foot != null) {
@@ -1071,30 +1218,48 @@ private fun PageBackground(
                 Modifier
                     .fillMaxWidth()
                     .height(artHeight * (1f + foot.runFraction))
-                    .offset { IntOffset(0, -heroScrollPx.value) },
+                    .heroParallaxScroll(heroScrollPx),
             ) {
-                Image(
-                    bitmap = foot.image,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer {
-                            alpha = heroAlpha.value
-                            // The clip fades on its own. Leaving the still under
-                            // it would fade twice, and the picture would be gone
-                            // before the bottom of the box.
-                            if (clip != null) {
-                                this.clip = true
-                                shape = StillAboveFade(foot.runFraction)
-                            }
-                        },
-                )
+                val stillModifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        alpha = heroAlpha.value
+                        // The clip fades on its own. Leaving the still under
+                        // it would fade twice, and the picture would be gone
+                        // before the bottom of the box.
+                        // The still's foot is only cut away once the clip is
+                        // actually drawing — otherwise the page colour shows
+                        // through bare for a moment under the fade line.
+                        if (clipHandoff) {
+                            this.clip = true
+                            shape = StillAboveFade(foot.runFraction)
+                        }
+                    }
+                if (hazeStill) {
+                    chromeHazeState?.let { haze ->
+                        Box(Modifier.hazeSource(haze).matchParentSize()) {
+                            Image(
+                                bitmap = foot.image,
+                                contentDescription = null,
+                                contentScale = ContentScale.FillBounds,
+                                modifier = stillModifier,
+                            )
+                        }
+                    }
+                } else {
+                    Image(
+                        bitmap = foot.image,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
+                        modifier = stillModifier,
+                    )
+                }
                 if (clip != null) {
                     CanvasArtworkPlayer(
                         canvas = clip,
-                        isPlaying = true,
+                        isPlaying = heroDecodeActive,
                         footBlur = videoBlur,
+                        onCoverChanged = { clipCover = it },
                         modifier = Modifier.matchParentSize(),
                     )
                 }
@@ -1102,6 +1267,36 @@ private fun PageBackground(
         }
     }
 }
+
+/**
+ * Lets vertical drags on a nested horizontal row reach the parent [LazyColumn].
+ * Some OEM touch stacks (notably Samsung on One UI 8) otherwise keep the row
+ * and the page feels stuck.
+ */
+private fun Modifier.forwardVerticalScrollTo(parent: LazyListState): Modifier = composed {
+    nestedScroll(
+        remember(parent) {
+            object : NestedScrollConnection {
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    if (available.y == 0f) return Offset.Zero
+                    return Offset(0f, parent.dispatchRawDelta(available.y))
+                }
+            }
+        },
+    )
+}
+
+/**
+ * Parallax from list scroll. Scroll offset is read in the offset lambda so the
+ * hero moves every frame; reading it only in a [layout] placeable left album
+ * covers pinned to the viewport while the list moved underneath.
+ */
+private fun Modifier.heroParallaxScroll(heroScrollPx: State<Int>): Modifier =
+    offset { IntOffset(0, -heroScrollPx.value) }
 
 /** Cuts the still off where the fade starts, so a clip's own fade is the only one. */
 private class StillAboveFade(private val runFraction: Float) : Shape {
@@ -1118,30 +1313,60 @@ private const val PAGE_SOLID_FADE_MS = 220
 private const val HERO_FADE_MS = 240
 
 /**
+ * Still-to-clip handoff waits until the clip fade has nearly finished.
+ * [CanvasArtworkPlayer] sets [onRenderedChanged] at first frame while alpha
+ * is still easing up — cutting the still early exposes the page colour.
+ */
+private const val HEADER_CLIP_HANDOFF_COVER = 0.98f
+
+private class HeroScrollCacheEntry {
+    val itemHeightsPx = mutableMapOf<Int, Int>()
+    var heldScrollPx = 0
+}
+
+private val heroScrollCacheByBrowseId = mutableMapOf<String, HeroScrollCacheEntry>()
+
+/**
  * How far the list has scrolled, so the hero behind it stays in step after
  * the header has left the screen. Parking it off once that happened is what
  * cut the picture straight to the page colour.
+ *
+ * [browseId] keys a process-wide cache so opening an album or "Show all" does
+ * not reset the offset when this composable is torn down and the list is still
+ * parked partway down the page.
  */
 @Composable
-private fun rememberHeroScrollPx(listState: LazyListState): State<Int> {
-    return remember(listState) {
-        val heights = mutableMapOf<Int, Int>()
-        var held = 0
+private fun rememberHeroScrollPx(listState: LazyListState, browseId: String): State<Int> {
+    val entry = remember(browseId) {
+        heroScrollCacheByBrowseId.getOrPut(browseId) { HeroScrollCacheEntry() }
+    }
+    return remember(listState, browseId) {
         derivedStateOf {
-            for (item in listState.layoutInfo.visibleItemsInfo) heights[item.index] = item.size
+            for (item in listState.layoutInfo.visibleItemsInfo) {
+                entry.itemHeightsPx[item.index] = item.size
+            }
             var total = 0
             var known = true
             for (i in 0 until listState.firstVisibleItemIndex) {
-                val height = heights[i]
+                val height = entry.itemHeightsPx[i]
                 if (height == null) {
                     known = false
                     break
                 }
                 total += height
             }
-            if (!known) return@derivedStateOf held
+            if (!known) {
+                // Item 0 may still be in the viewport with a negative offset even
+                // after the list reports a higher first-visible index.
+                listState.layoutInfo.visibleItemsInfo.find { it.index == 0 }?.let { item0 ->
+                    entry.itemHeightsPx[0] = item0.size
+                    val fromItem0 = (-item0.offset).coerceAtLeast(0)
+                    if (fromItem0 > entry.heldScrollPx) entry.heldScrollPx = fromItem0
+                }
+                return@derivedStateOf entry.heldScrollPx
+            }
             total += listState.firstVisibleItemScrollOffset
-            held = total
+            entry.heldScrollPx = total
             total
         }
     }
@@ -1526,6 +1751,70 @@ private fun SectionHeading(
     }
 }
 
+/** Compact suggested row for the horizontal playlist carousel. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CompactSuggestedSongRow(
+    song: Song,
+    palette: ArtworkPalette,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+    onAdd: () -> Unit,
+    downloadedTint: Color? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = song.artworkAt(ROW_ART_PX),
+            contentDescription = null,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .thumbnailBorder(RoundedCornerShape(7.dp))
+                .background(palette.elevated),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            ExplicitSongTitle(
+                song = song,
+                style = MaterialTheme.typography.titleMedium,
+                color = palette.onBackground,
+            )
+            Text(
+                text = song.artist,
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette.onBackgroundVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (downloadedTint != null) {
+            DownloadedBadge(song.videoId, downloadedTint)
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(palette.accent.copy(alpha = 0.16f))
+                .clickable(onClick = onAdd),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Add,
+                contentDescription = stringResource(R.string.add_to_playlist),
+                tint = palette.accent,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
 /** Compact row used inside the artist song grid; no swipe, to keep the
  *  horizontal pager's gestures unambiguous. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -1582,76 +1871,6 @@ private fun CompactSongRow(
                 Icons.Rounded.MoreVert,
                 contentDescription = stringResource(R.string.more),
                 tint = palette.onBackgroundVariant,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
-}
-
-/**
- * A row under "Suggested" — a track YouTube offers to round the playlist
- * out but that was never added. [onAdd] is the point of the row, so it gets
- * the trailing spot a track already on the playlist spends on "more"; the
- * long-press sheet is still one gesture away for anything else.
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SuggestedSongRow(
-    song: Song,
-    palette: ArtworkPalette,
-    onClick: () -> Unit,
-    onLongPress: () -> Unit,
-    onAdd: () -> Unit,
-    downloadedTint: Color? = null,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = PAGE_GUTTER, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AsyncImage(
-            model = song.artworkAt(ROW_ART_PX),
-            contentDescription = null,
-            modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .thumbnailBorder(RoundedCornerShape(8.dp))
-                .background(palette.elevated),
-        )
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            ExplicitSongTitle(
-                song = song,
-                style = MaterialTheme.typography.titleMedium,
-                color = palette.onBackground,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.onBackgroundVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (downloadedTint != null) {
-            DownloadedBadge(song.videoId, downloadedTint)
-        }
-        Spacer(Modifier.width(8.dp))
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(palette.accent.copy(alpha = 0.16f))
-                .clickable(onClick = onAdd),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Rounded.Add,
-                contentDescription = stringResource(R.string.add_to_playlist),
-                tint = palette.accent,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -1855,18 +2074,26 @@ private fun DetailPage.headerLines(trackCount: Int, playtime: String? = null): P
     // to Playlist — never reuse the subtitle's tally, which goes stale the
     // moment a song is added or removed.
     if (type == BrowseType.PLAYLIST) {
-        val parts = subtitle.split("•", "·").map { it.trim() }.filter { it.isNotEmpty() }
+        val parts = PlaylistPrivacy.stripFromSubtitle(subtitle)
+            .split("•", "·")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
         val kind = parts.firstOrNull { it.lowercase(Locale.ROOT) in KIND_WORDS }
         val owner = parts.filter {
-            it != kind && !it.matches(PLAYLIST_SUBTITLE_TALLY)
+            it != kind &&
+                !it.matches(PLAYLIST_SUBTITLE_TALLY) &&
+                !PlaylistPrivacy.isPrivacyLabel(it)
         }.joinToString(", ")
         val kindLabel = stringResource(R.string.playlist)
+        val visibility = playlistPrivacy?.label
+            ?: PlaylistPrivacy.fromSubtitle(subtitle)?.label
         val meta = listOfNotNull(
             kindLabel,
             trackCount.takeIf { it > 0 }?.let {
                 pluralStringResource(R.plurals.track_count_plural, it, it)
             },
             playtime,
+            visibility,
         ).joinToString(" • ")
         return owner to meta
     }

@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -55,7 +56,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.velora.data.settings.AppSettings
 import com.music.velora.ui.components.FROST_TINT
+import com.music.velora.ui.components.LocalFrostChrome
+import com.music.velora.ui.components.frostedSurface
 import com.music.velora.ui.components.optimizedHazeEffect
+import com.music.velora.ui.components.toFrostChrome
+import com.music.velora.ui.theme.ArtworkPalette
 import com.music.velora.ui.utils.containSheetGestures
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
@@ -101,9 +106,15 @@ internal fun PlayerDrawer(
     title: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * When set, frost matches the page sheets — blur of [hazeState] tinted from
+     * this sleeve — instead of the fixed dark glass used by output / lyrics.
+     */
+    palette: ArtworkPalette? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val chrome = palette?.toFrostChrome()
 
     // How far the drawer has been dragged down, in pixels. Released, it either
     // springs back or goes — see [DISMISS_DRAG_FRACTION].
@@ -185,18 +196,30 @@ internal fun PlayerDrawer(
                 .fillMaxWidth()
                 .onSizeChanged { height = it.height }
                 .offset { IntOffset(0, offset.roundToInt()) }
-                .clip(DRAWER_SHAPE)
                 .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(Color(0xFF121212))
+                    if (palette != null) {
+                        // Same frosted material as SongActionsSheet / page drawers.
+                        Modifier.frostedSurface(
+                            shape = DRAWER_SHAPE,
+                            hazeState = hazeState,
+                            tint = palette.elevated,
+                        )
                     } else {
                         Modifier
-                            .optimizedHazeEffect(
-                                state = hazeState,
-                                style = HazeMaterials.regular(FROST_TINT),
+                            .clip(DRAWER_SHAPE)
+                            .then(
+                                if (reduceDynamicBlur) {
+                                    Modifier.background(Color(0xFF121212))
+                                } else {
+                                    Modifier
+                                        .optimizedHazeEffect(
+                                            state = hazeState,
+                                            style = HazeMaterials.regular(FROST_TINT),
+                                        )
+                                        .background(Color(0xFF121212).copy(alpha = 0.9f))
+                                },
                             )
-                            .background(Color(0xFF121212).copy(alpha = 0.9f))
-                    }
+                    },
                 )
                 .clickable(
                     indication = null,
@@ -221,6 +244,8 @@ internal fun PlayerDrawer(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            val handleColor = chrome?.content?.copy(alpha = 0.35f) ?: Color.White.copy(alpha = 0.25f)
+            val titleColor = chrome?.content ?: Color.White
             // The grab handle every sheet here has, and the thing that says the
             // drawer can be pulled away before anybody tries it.
             Box(
@@ -228,20 +253,28 @@ internal fun PlayerDrawer(
                     .padding(bottom = 12.dp)
                     .size(width = 36.dp, height = 4.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.25f)),
+                    .background(handleColor),
             )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = Color.White,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 4.dp, bottom = 14.dp),
-            )
-            content()
+            if (title.isNotEmpty()) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = titleColor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, bottom = 14.dp),
+                )
+            }
+            if (chrome != null) {
+                CompositionLocalProvider(LocalFrostChrome provides chrome) {
+                    content()
+                }
+            } else {
+                content()
+            }
         }
         }
     }
